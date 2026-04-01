@@ -459,7 +459,7 @@ SPECTACULAR_SETTINGS = {
         'hideHostname': True,
     },
     'SERVERS': [
-        {'url': 'https://85.198.101.179:8006', 'description': 'Production server'},
+        {'url': 'http://85.198.101.179:8006', 'description': 'Production server'},
         {'url': 'http://localhost:8000', 'description': 'Development server'},
     ],
     'TAGS': [
