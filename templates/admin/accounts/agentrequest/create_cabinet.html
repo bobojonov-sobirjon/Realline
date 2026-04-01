@@ -1,0 +1,32 @@
+{% extends "admin/base_site.html" %}
+{% block title %}{{ title }} | {{ site_title|default:"Django" }}{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">Главная</a>
+  &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_label }}</a>
+  &rsaquo; <a href="{% url 'admin:accounts_agentrequest_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+  &rsaquo; <a href="{% url 'admin:accounts_agentrequest_change' agent_request.pk %}">#{{ agent_request.pk }}</a>
+  &rsaquo; {{ title }}
+</div>
+{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<p>Заявка: <strong>{{ agent_request.name }}</strong>, тел.: {{ agent_request.phone }}</p>
+<form method="post" action="">
+  {% csrf_token %}
+  <fieldset class="module aligned">
+    {% for field in form %}
+    <div class="form-row{% if field.errors %} errors{% endif %}">
+      {{ field.errors }}
+      {{ field.label_tag }}
+      {{ field }}
+      {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </fieldset>
+  <div class="submit-row">
+    <input type="submit" class="default" value="Создать кабинет">
+    <a href="{% url 'admin:accounts_agentrequest_change' agent_request.pk %}" class="button cancel-link">Отмена</a>
+  </div>
+</form>
+{% endblock %}
