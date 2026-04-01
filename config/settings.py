@@ -55,7 +55,6 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'corsheaders',
     'django_filters',
-    'channels',
     *LOCAL_APPS,
 ]
 
