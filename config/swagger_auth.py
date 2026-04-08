@@ -20,8 +20,14 @@ class SwaggerTokenView(APIView):
     permission_classes = [AllowAny]
     
     @extend_schema(
-        summary="OAuth2 Token Endpoint",
-        description="OAuth2 password flow for Swagger - email only authentication",
+        summary='Токен для Swagger UI (упрощённый OAuth2 password)',
+        description=(
+            'Служебный endpoint для авторизации в **Swagger UI** по схеме, похожей на OAuth2 password. '
+            'Поле **username** фактически трактуется как **email** пользователя; пароль может не проверяться '
+            '(зависит от реализации — см. код). Выдаются **access_token** и **refresh_token** для подстановки в запросы.\n\n'
+            '**Не путать** с боевым входом агента: для продуктивного сценария используйте **`POST .../accounts/login/`** '
+            'с username/password и полем согласия.'
+        ),
         request={
             'application/x-www-form-urlencoded': {
                 'type': 'object',

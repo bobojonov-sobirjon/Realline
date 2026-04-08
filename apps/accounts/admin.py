@@ -20,8 +20,12 @@ from apps.accounts.models import (
     CustomUser,
     District,
     Highway,
+    LandPlotListingDetails,
+    PropertyCategory,
+    ResidentialListingDetails,
     PropertyImage,
     PropertyListing,
+    PropertyListingUnit,
     PropertyTag,
 )
 
@@ -307,6 +311,136 @@ class PropertyTagInline(admin.TabularInline):
     extra = 0
 
 
+class PropertyListingUnitInlineForm(forms.ModelForm):
+    class Meta:
+        model = PropertyListingUnit
+        fields = '__all__'
+        widgets = {
+            'image': forms.FileInput(attrs={'accept': 'image/*'}),
+        }
+
+
+class PropertyListingUnitInline(admin.TabularInline):
+    model = PropertyListingUnit
+    form = PropertyListingUnitInlineForm
+    extra = 0
+    verbose_name = 'Лот (планировка)'
+    verbose_name_plural = 'Планировки и цены (лоты ЖК)'
+    readonly_fields = ('price_per_sqm',)
+    fields = (
+        'layout_label',
+        'title',
+        'building',
+        'rooms',
+        'is_studio',
+        'price',
+        'total_area',
+        'kitchen_area',
+        'floor',
+        'floors_total',
+        'finishing',
+        'price_per_sqm',
+        'sort_order',
+        'image',
+        'completion_text',
+        'keys_handover_text',
+        'bathroom_summary',
+        'ceiling_height',
+        'balcony_summary',
+        'payment_methods',
+        'banks',
+        'is_apartments_legal',
+        'is_assignment',
+        'is_two_level',
+        'has_master_bedroom',
+    )
+
+
+class ResidentialListingDetailsInline(admin.StackedInline):
+    model = ResidentialListingDetails
+    max_num = 1
+    extra = 0
+    can_delete = True
+    verbose_name = 'Жилая (новостройка / вторичка / загород / коттедж / дача)'
+    verbose_name_plural = (
+        'Блок «жилая недвижимость» (общий для всех категорий, кроме земельного участка)'
+    )
+    fieldsets = (
+        (
+            'Как в макете новостройки / ЖК',
+            {
+                'fields': (
+                    'developer',
+                    'completion_period_text',
+                    'housing_class',
+                    'house_construction_type',
+                    'parking_info',
+                    'registration_settlement',
+                    'escrow_bank',
+                    'project_finishing',
+                    'district_note',
+                    'units_total',
+                    'units_available',
+                    'price_per_sqm_from',
+                ),
+            },
+        ),
+        (
+            'Договор, оплата, загород (при необходимости)',
+            {
+                'classes': ('collapse',),
+                'fields': (
+                    'contract_form',
+                    'payment_methods',
+                    'travel_time_note',
+                    'plot_location_text',
+                ),
+            },
+        ),
+    )
+
+
+class LandPlotListingDetailsInline(admin.StackedInline):
+    model = LandPlotListingDetails
+    max_num = 1
+    extra = 0
+    can_delete = True
+    fieldsets = (
+        (
+            'Участок и документы',
+            {
+                'fields': (
+                    'external_reference_id',
+                    'plot_number',
+                    'cadastral_number',
+                    'land_purpose',
+                    'contract_form',
+                    'completion_quarter_text',
+                ),
+            },
+        ),
+    )
+
+
+_LAND_CATEGORY_SLUG = 'land_plot'
+
+
+def _detail_inline_class_for_category_slug(slug: str):
+    if slug == _LAND_CATEGORY_SLUG:
+        return LandPlotListingDetailsInline
+    if not slug:
+        return None
+    return ResidentialListingDetailsInline
+
+
+@admin.register(PropertyCategory)
+class PropertyCategoryAdmin(admin.ModelAdmin):
+    list_display = ('name', 'slug', 'sort_order')
+    list_editable = ('sort_order',)
+    ordering = ('sort_order', 'name')
+    search_fields = ('name', 'slug')
+
+
 @admin.register(District)
 class DistrictAdmin(admin.ModelAdmin):
     list_display = ('id', 'name')
@@ -326,27 +460,47 @@ def _set_property_status(request, queryset, status_value, label_done):
 
 @admin.register(PropertyListing)
 class PropertyListingAdmin(admin.ModelAdmin):
-    list_display = ('code', 'name', 'agent', 'price', 'status', 'created_at')
+    list_display = (
+        'code',
+        'name',
+        'category',
+        'property_type',
+        'is_actual_offer',
+        'agent',
+        'price',
+        'status',
+        'created_at',
+    )
+    list_filter = ('status', 'category', 'property_type', 'is_actual_offer', 'created_at')
+    list_select_related = ('agent', 'category')
     fieldsets = (
         (
-            None,
+            'Карточка объекта',
             {
+                'description': (
+                    'Выберите категорию и сохраните. Для «Земельные участки» — блок полей участка; '
+                    'для остальных категорий (новостройки, вторичка, загород, коттеджи, дачи, коммерция…) '
+                    '— общий блок «жилая недвижимость», как в макете новостройки. Тип объекта (legacy) '
+                    'подстраивается от категории.'
+                ),
                 'fields': (
                     'code',
                     'name',
                     'agent',
+                    'category',
                     'property_type',
                     'price',
                     'status',
+                    'is_actual_offer',
                     'rejection_reason',
                     'created_at',
                     'updated_at',
-                )
+                ),
             },
         ),
         ('Описание', {'fields': ('description',)}),
         (
-            'Адрес и параметры',
+            'Адрес и карта',
             {
                 'fields': (
                     'settlement',
@@ -355,9 +509,16 @@ class PropertyListingAdmin(admin.ModelAdmin):
                     'address',
                     'latitude',
                     'longitude',
+                    'distance_to_mkad_km',
+                ),
+            },
+        ),
+        (
+            'Площади и дом',
+            {
+                'fields': (
                     'area',
                     'land_area',
-                    'distance_to_mkad_km',
                     'floors',
                     'rooms',
                     'bedrooms',
@@ -369,8 +530,9 @@ class PropertyListingAdmin(admin.ModelAdmin):
             },
         ),
         (
-            'Участок и локация (чекбоксы)',
+            'Инфраструктура посёлка',
             {
+                'classes': ('collapse',),
                 'fields': (
                     'has_asphalt_roads',
                     'has_street_lighting',
@@ -395,10 +557,27 @@ class PropertyListingAdmin(admin.ModelAdmin):
             },
         ),
     )
-    list_filter = ('status', 'property_type', 'created_at')
-    search_fields = ('code', 'name', 'settlement', 'address', 'district__name', 'highway__name')
+    search_fields = (
+        'code',
+        'name',
+        'settlement',
+        'address',
+        'district__name',
+        'highway__name',
+        'category__name',
+    )
     readonly_fields = ('code', 'created_at', 'updated_at')
-    inlines = (PropertyTagInline, PropertyImageInline)
+
+    def get_inlines(self, request, obj=None):
+        blocks = []
+        if obj and obj.category_id:
+            slug = getattr(obj.category, 'slug', None)
+            if not slug:
+                slug = PropertyCategory.objects.filter(pk=obj.category_id).values_list('slug', flat=True).first()
+            cls = _detail_inline_class_for_category_slug(slug or '')
+            if cls:
+                blocks.append(cls)
+        return blocks + [PropertyTagInline, PropertyImageInline, PropertyListingUnitInline]
     raw_id_fields = ('agent',)
     actions = (
         'mark_status_published',

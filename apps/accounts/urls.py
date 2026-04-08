@@ -5,7 +5,19 @@ from apps.accounts import views
 app_name = 'accounts'
 
 urlpatterns = [
+    path(
+        'catalog/properties/<int:listing_pk>/units/summary/',
+        views.PropertyListingUnitSummaryView.as_view(),
+        name='property-catalog-units-summary',
+    ),
+    path(
+        'catalog/properties/<int:listing_pk>/units/',
+        views.PropertyListingUnitListView.as_view(),
+        name='property-catalog-units-list',
+    ),
+    path('catalog/properties/<int:pk>/', views.PropertyCatalogDetailView.as_view(), name='property-catalog-detail'),
     path('catalog/properties/', views.PropertyCatalogListView.as_view(), name='property-catalog'),
+    path('catalog/categories/', views.PropertyCategoryListView.as_view(), name='catalog-categories'),
     path('catalog/districts/', views.DistrictListView.as_view(), name='catalog-districts'),
     path('catalog/highways/', views.HighwayListView.as_view(), name='catalog-highways'),
     path('register/', views.AgentRegisterApplicationView.as_view(), name='register'),
@@ -27,6 +39,12 @@ urlpatterns = [
         name='compare-remove',
     ),
     path('change-password/', views.ChangePasswordView.as_view(), name='change-password'),
+    path(
+        'properties/published/<int:pk>/',
+        views.PropertyPublishedDetailView.as_view(),
+        name='property-published-detail',
+    ),
+    path('properties/published/', views.PropertyPublishedListView.as_view(), name='property-published-list'),
     path('properties/', views.PropertyListingListCreateView.as_view(), name='property-list-create'),
     path('properties/<int:pk>/tags/', views.PropertyTagsReplaceView.as_view(), name='property-tags-replace'),
     path('properties/<int:pk>/', views.PropertyListingDetailView.as_view(), name='property-detail'),

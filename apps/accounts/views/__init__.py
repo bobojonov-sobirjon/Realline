@@ -6,7 +6,13 @@ from apps.accounts.views.auth import (
 from apps.accounts.views.catalog import (
     DistrictListView,
     HighwayListView,
+    PropertyCatalogDetailView,
     PropertyCatalogListView,
+    PropertyCategoryListView,
+    PropertyListingUnitListView,
+    PropertyListingUnitSummaryView,
+    PropertyPublishedDetailView,
+    PropertyPublishedListView,
 )
 from apps.accounts.views.favorites_compare import (
     CompareAddView,
@@ -39,7 +45,13 @@ __all__ = (
     'FavoriteListView',
     'FavoriteRemoveView',
     'HighwayListView',
+    'PropertyCatalogDetailView',
     'PropertyCatalogListView',
+    'PropertyListingUnitListView',
+    'PropertyListingUnitSummaryView',
+    'PropertyPublishedDetailView',
+    'PropertyPublishedListView',
+    'PropertyCategoryListView',
     'PropertyListingDetailView',
     'PropertyListingListCreateView',
     'PropertyResubmitView',

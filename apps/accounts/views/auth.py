@@ -34,9 +34,12 @@ class _AgentApplicationCreateMixin:
     tags=['Accounts — авторизация'],
     summary='Регистрация / заявка (форма у экрана входа)',
     description=(
-        'Публичный эндпоинт (без JWT). Тело JSON: `name`, `phone`, `personal_data_consent` (boolean). '
-        'Создаётся только запись-заявка; пользователь в БД не создаётся. После одобрения менеджер вручную '
-        'заводит кабинет в админке и передаёт агенту логин и пароль.'
+        '**Назначение:** приём заявки от потенциального агента с публичной формы («стать партнёром» / регистрация).\n\n'
+        '**Доступ:** без токена. Тело **JSON**: имя, телефон, флаг согласия на обработку персональных данных '
+        '(`personal_data_consent`, должен быть `true` при действующей политике).\n\n'
+        '**Побочный эффект:** в таблице заявок создаётся одна запись; **учётная запись пользователя не создаётся** '
+        'автоматически. После проверки менеджер в **админке Django** создаёт пользователя агента и выдаёт логин/пароль.\n\n'
+        '**Ответ:** HTTP 201, поля `id` заявки и человекочитаемое сообщение для экрана успеха.'
     ),
     request=AgentRequestCreateSerializer,
     responses={201: OpenApiResponse(description='Заявка принята; в ответе id и текст для пользователя.')},
@@ -49,9 +52,14 @@ class AgentRegisterApplicationView(_AgentApplicationCreateMixin, generics.Create
     tags=['Accounts — авторизация'],
     summary='Вход агента (JWT)',
     description=(
-        'Тело JSON: `username`, `password`, `personal_data_consent` (true). '
-        'Доступ только если в админке у пользователя включено «Подтверждён администратором». '
-        'Ответ: `access`, `refresh`, плюс служебные поля user (см. схему).'
+        '**Назначение:** получить пару **access** / **refresh** JWT для вызовов защищённых методов API '
+        '(кабинет агента, избранное, сравнение).\n\n'
+        '**Тело JSON:** `username` (как при выдаче кабинета), `password`, `personal_data_consent`: **true** '
+        '(единоразовое подтверждение политики при входе).\n\n'
+        '**Условие:** у пользователя в админке должен быть флаг **«Подтверждён администратором»** (`is_verified`); '
+        'иначе вход будет отклонён.\n\n'
+        '**Ответ:** короткоживущий **access** (заголовок `Authorization: Bearer ...`) и **refresh** для продления сессии '
+        'через `POST .../token/refresh/`; при необходимости дополнительные поля профиля — см. схему ответа сериализатора.'
     ),
     request=AgentTokenObtainSerializer,
 )
@@ -62,7 +70,12 @@ class AgentTokenObtainPairView(TokenObtainPairView):
 @extend_schema(
     tags=['Accounts — авторизация'],
     summary='Обновить access-токен',
-    description='Тело JSON: `refresh` (строка refresh-токена). Ответ содержит новый `access`.',
+    description=(
+        '**Назначение:** получить новый **access**-токен без повторного ввода пароля, пока действителен **refresh**.\n\n'
+        '**Тело JSON:** объект с полем **`refresh`** — строка refresh-токена, выданная при логине.\n\n'
+        '**Ответ:** новый **access** (и при настройках SimpleJWT может вращаться refresh — см. фактический JSON). '
+        'Используйте новый access в заголовке `Authorization: Bearer ...` для всех последующих запросов.'
+    ),
     request=TokenRefreshSerializer,
 )
 class AgentTokenRefreshView(TokenRefreshView):

@@ -1,5 +1,6 @@
 import secrets
 import string
+from decimal import Decimal
 
 from django.contrib.auth.models import AbstractUser
 from django.db import models
@@ -8,6 +9,10 @@ from django.utils.translation import gettext_lazy as _
 
 def property_image_upload_to(instance, filename):
     return f'properties/{instance.property_id}/{filename}'
+
+
+def listing_unit_image_upload_to(instance, filename):
+    return f'listing_units/{instance.listing_id}/{filename}'
 
 
 class CustomUser(AbstractUser):
@@ -115,6 +120,27 @@ class Highway(models.Model):
         return self.name
 
 
+class PropertyCategory(models.Model):
+    """Категория витрины (новостройки / загород / участок и т.д.)."""
+
+    name = models.CharField(_('название'), max_length=255, unique=True)
+    slug = models.SlugField(
+        _('код'),
+        max_length=64,
+        unique=True,
+        help_text=_('Латиница без пробелов: new_building, suburban, land_plot…'),
+    )
+    sort_order = models.PositiveSmallIntegerField(_('порядок'), default=0)
+
+    class Meta:
+        verbose_name = _('категория объекта')
+        verbose_name_plural = _('категории объектов')
+        ordering = ['sort_order', 'name']
+
+    def __str__(self):
+        return self.name
+
+
 class PropertyListing(models.Model):
     class PropertyType(models.TextChoices):
         LAND = 'land', _('Земельные участки')
@@ -122,6 +148,19 @@ class PropertyListing(models.Model):
         APARTMENT = 'apartment', _('Квартира')
         COMMERCIAL = 'commercial', _('Коммерческая')
         OTHER = 'other', _('Другое')
+
+    # Категории витрины (кроме land_plot) делят один шаблон карточки и блок «жилая / новостройка»;
+    # land_plot — отдельный набор полей.
+    _CATEGORY_SLUG_TO_PROPERTY_TYPE = {
+        'new_building': PropertyType.APARTMENT,
+        'suburban': PropertyType.HOUSE,
+        'secondary': PropertyType.APARTMENT,
+        'cottage': PropertyType.HOUSE,
+        'dacha': PropertyType.HOUSE,
+        'land_plot': PropertyType.LAND,
+        'commercial': PropertyType.COMMERCIAL,
+        'other': PropertyType.OTHER,
+    }
 
     class Status(models.TextChoices):
         MODERATION = 'moderation', _('На модерации')
@@ -143,10 +182,23 @@ class PropertyListing(models.Model):
         default='',
     )
     property_type = models.CharField(
-        _('тип объекта'),
+        _('тип объекта (legacy)'),
         max_length=32,
         choices=PropertyType.choices,
         default=PropertyType.OTHER,
+        help_text=_('Подстраивается от категории при сохранении; для фильтров API пока сохраняем.'),
+    )
+    category = models.ForeignKey(
+        PropertyCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='listings',
+        verbose_name=_('категория витрины'),
+        help_text=_(
+            'Участок — отдельные поля блока. Остальные категории (новостройки, вторичка, загород, коттеджи, дачи и т.д.) '
+            'используют общий блок деталей как в макете новостройки.'
+        ),
     )
     name = models.CharField(_('название'), max_length=500)
     price = models.DecimalField(_('цена, ₽'), max_digits=15, decimal_places=2)
@@ -198,15 +250,15 @@ class PropertyListing(models.Model):
     )
     latitude = models.DecimalField(
         _('широта (WGS84)'),
-        max_digits=9,
-        decimal_places=6,
+        max_digits=20,
+        decimal_places=18,
         null=True,
         blank=True,
     )
     longitude = models.DecimalField(
         _('долгота (WGS84)'),
-        max_digits=9,
-        decimal_places=6,
+        max_digits=20,
+        decimal_places=18,
         null=True,
         blank=True,
     )
@@ -237,6 +289,11 @@ class PropertyListing(models.Model):
         default=Status.MODERATION,
     )
     rejection_reason = models.TextField(_('причина отклонения'), blank=True)
+    is_actual_offer = models.BooleanField(
+        _('в блоке «Актуальные предложения»'),
+        default=False,
+        help_text=_('Показ на главной в карусели «Актуальные предложения». Включает администратор.'),
+    )
     created_at = models.DateTimeField(_('создано'), auto_now_add=True)
     updated_at = models.DateTimeField(_('обновлено'), auto_now=True)
 
@@ -249,6 +306,16 @@ class PropertyListing(models.Model):
         return f'{self.code} — {self.name}'
 
     def save(self, *args, **kwargs):
+        if self.category_id:
+            slug = (
+                PropertyCategory.objects.filter(pk=self.category_id)
+                .values_list('slug', flat=True)
+                .first()
+            )
+            if slug:
+                pt = self._CATEGORY_SLUG_TO_PROPERTY_TYPE.get(slug)
+                if pt is not None:
+                    self.property_type = pt
         if not self.code:
             self.code = self._generate_code()
             while True:
@@ -264,6 +331,149 @@ class PropertyListing(models.Model):
     def _generate_code():
         suffix = ''.join(secrets.choice(string.digits) for _ in range(4))
         return f'RL-{suffix}'
+
+
+class ResidentialListingDetails(models.Model):
+    """Общий блок карточки для новостроек, вторички, загорода, коттеджей, дач (как в макете ЖК)."""
+
+    listing = models.OneToOneField(
+        PropertyListing,
+        on_delete=models.CASCADE,
+        related_name='residential_details',
+        verbose_name=_('объект'),
+    )
+    developer = models.CharField(_('застройщик'), max_length=255, blank=True)
+    completion_period_text = models.CharField(
+        _('срок сдачи (текст)'),
+        max_length=255,
+        blank=True,
+        help_text=_('Например: 3 кв. 2026 — 2 кв. 2028'),
+    )
+    housing_class = models.CharField(_('класс жилья'), max_length=128, blank=True)
+    house_construction_type = models.CharField(_('тип дома'), max_length=255, blank=True)
+    parking_info = models.CharField(_('паркинг'), max_length=255, blank=True)
+    registration_settlement = models.CharField(_('регистрация / НП'), max_length=255, blank=True)
+    escrow_bank = models.CharField(_('эскроу-счёт (банк)'), max_length=255, blank=True)
+    project_finishing = models.CharField(_('отделка (уровень проекта)'), max_length=255, blank=True)
+    district_note = models.CharField(_('район (подпись в карточке)'), max_length=255, blank=True)
+    units_total = models.PositiveIntegerField(_('всего квартир / единиц'), null=True, blank=True)
+    units_available = models.PositiveIntegerField(_('в продаже'), null=True, blank=True)
+    price_per_sqm_from = models.DecimalField(
+        _('цена за м² от, ₽'),
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    contract_form = models.CharField(_('форма договора'), max_length=128, blank=True)
+    payment_methods = models.TextField(_('способы оплаты'), blank=True)
+    travel_time_note = models.CharField(
+        _('подпись про дорогу до города'),
+        max_length=255,
+        blank=True,
+        help_text=_('Например: До Москвы — 25 мин на автомобиле'),
+    )
+    plot_location_text = models.TextField(_('участок и локация (текст)'), blank=True)
+
+    class Meta:
+        verbose_name = _('детали: жилая (новостройка / вторичка / загород…)'),
+        verbose_name_plural = _('блок «Жилая недвижимость»')
+
+    def __str__(self):
+        return f'{self.listing.code}: жилая'
+
+
+class LandPlotListingDetails(models.Model):
+    """Поля карточки «Земельный участок»."""
+
+    listing = models.OneToOneField(
+        PropertyListing,
+        on_delete=models.CASCADE,
+        related_name='land_plot_details',
+        verbose_name=_('объект'),
+    )
+    external_reference_id = models.CharField(
+        _('ID на витрине'),
+        max_length=64,
+        blank=True,
+        help_text=_('Отображаемый номер для клиента (если нужен).'),
+    )
+    plot_number = models.CharField(_('№ участка'), max_length=64, blank=True)
+    cadastral_number = models.CharField(_('кадастровый номер'), max_length=128, blank=True)
+    land_purpose = models.CharField(_('назначение земли'), max_length=255, blank=True)
+    contract_form = models.CharField(_('форма договора'), max_length=128, blank=True)
+    completion_quarter_text = models.CharField(_('срок сдачи / подключения'), max_length=128, blank=True)
+
+    class Meta:
+        verbose_name = _('детали: участок')
+        verbose_name_plural = _('блок «Земельный участок»')
+
+    def __str__(self):
+        return f'{self.listing.code}: участок'
+
+
+class PropertyListingUnit(models.Model):
+    """
+    Квартира / лот внутри ЖК (блок «Планировка и цены»).
+    Родитель — PropertyListing; фильтры и сводка — отдельные GET под /catalog/.../units/.
+    """
+
+    listing = models.ForeignKey(
+        PropertyListing,
+        on_delete=models.CASCADE,
+        related_name='units',
+        verbose_name=_('объект-ЖК'),
+    )
+    layout_label = models.CharField(
+        _('группа планировки'),
+        max_length=64,
+        blank=True,
+        help_text=_('Одинаковое значение — одна строка аккордеона (например Студия, 1-комнатная).'),
+    )
+    title = models.CharField(_('подпись на карточке'), max_length=255, default='', blank=True)
+    building = models.CharField(_('корпус'), max_length=64, blank=True)
+    completion_text = models.CharField(_('срок сдачи'), max_length=255, blank=True)
+    keys_handover_text = models.CharField(_('выдача ключей'), max_length=255, blank=True)
+    rooms = models.PositiveSmallIntegerField(_('комнат'), null=True, blank=True)
+    is_studio = models.BooleanField(_('студия'), default=False)
+    price = models.DecimalField(_('цена, ₽'), max_digits=15, decimal_places=2)
+    total_area = models.DecimalField(_('S общая, м²'), max_digits=10, decimal_places=2, null=True, blank=True)
+    kitchen_area = models.DecimalField(_('S кухни, м²'), max_digits=10, decimal_places=2, null=True, blank=True)
+    floor = models.PositiveSmallIntegerField(_('этаж'), null=True, blank=True)
+    floors_total = models.PositiveSmallIntegerField(_('этажей в доме'), null=True, blank=True)
+    finishing = models.CharField(_('отделка'), max_length=255, blank=True)
+    bathroom_summary = models.CharField(_('санузел'), max_length=255, blank=True)
+    ceiling_height = models.CharField(_('высота потолков'), max_length=64, blank=True)
+    balcony_summary = models.CharField(_('балкон'), max_length=255, blank=True)
+    payment_methods = models.CharField(_('способы оплаты'), max_length=500, blank=True)
+    banks = models.CharField(_('банки'), max_length=500, blank=True)
+    is_apartments_legal = models.BooleanField(_('апартаменты'), default=False)
+    is_assignment = models.BooleanField(_('переуступка'), default=False)
+    is_two_level = models.BooleanField(_('двухуровневая'), default=False)
+    has_master_bedroom = models.BooleanField(_('мастер-спальня'), default=False)
+    price_per_sqm = models.DecimalField(
+        _('цена за м², ₽'),
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    image = models.ImageField(_('планировка / фото'), upload_to=listing_unit_image_upload_to, null=True, blank=True)
+    sort_order = models.PositiveIntegerField(_('порядок'), default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _('планировка (лот)')
+        verbose_name_plural = _('планировки и цены')
+        ordering = ['sort_order', 'id']
+
+    def __str__(self):
+        return f'{self.listing.code} #{self.pk}'
+
+    def save(self, *args, **kwargs):
+        if self.price is not None and self.total_area and self.total_area > 0:
+            self.price_per_sqm = (self.price / self.total_area).quantize(Decimal('0.01'))
+        super().save(*args, **kwargs)
 
 
 class PropertyTag(models.Model):

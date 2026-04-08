@@ -17,21 +17,30 @@ from apps.accounts.serializers import (
         tags=['Accounts — профиль'],
         summary='Профиль агента',
         description=(
-            'Требуется Bearer JWT. Возвращает `full_name`, `phone`, `description`, `email`, `username`, `is_verified`.'
+            '**GET:** текущие данные профиля агента и учётной записи.\n\n'
+            '**Авторизация:** Bearer JWT.\n\n'
+            'В ответе: контактные **full_name**, **phone**, текст **description**, а также **email**, **username**, '
+            'флаг **is_verified** (подтверждение админом). Структура соответствует `AgentProfileSerializer`.'
         ),
         responses={200: AgentProfileSerializer},
     ),
     put=extend_schema(
         tags=['Accounts — профиль'],
         summary='Полное обновление профиля',
-        description='JSON: все поля профиля; `email` можно сменить — обновится у пользователя.',
+        description=(
+            '**PUT:** передать полный набор полей профиля (**full_name**, **phone**, **description**, при необходимости '
+            '**email**). Email синхронизируется с моделью пользователя и должен оставаться уникальным.'
+        ),
         request=AgentProfileUpdateSerializer,
         responses={200: AgentProfileSerializer},
     ),
     patch=extend_schema(
         tags=['Accounts — профиль'],
         summary='Частичное обновление профиля',
-        description='JSON: передайте только изменяемые поля (`full_name`, `phone`, `description`, `email`).',
+        description=(
+            '**PATCH:** только изменившиеся поля (`full_name`, `phone`, `description`, `email`). '
+            'Остальные значения не сбрасываются.'
+        ),
         request=AgentProfileUpdateSerializer,
         responses={200: AgentProfileSerializer},
     ),
@@ -53,8 +62,12 @@ class AgentProfileRetrieveUpdateView(generics.RetrieveUpdateAPIView):
     tags=['Accounts — профиль'],
     summary='Смена пароля',
     description=(
-        'Требуется Bearer JWT; старый пароль не спрашивается. '
-        'Тело (JSON или form): `new_password`, `new_password_confirm` (мин. 8 символов, правила Django).'
+        '**Назначение:** установить новый пароль для **вошедшего** пользователя без ввода старого пароля '
+        '(сценарий «восстановление/смена из кабинета» при доверенной сессии).\n\n'
+        '**Авторизация:** Bearer JWT.\n\n'
+        '**Тело:** JSON или form — **`new_password`**, **`new_password_confirm`** (должны совпадать). '
+        'Действуют стандартные **валидаторы паролей Django** (длина, сложность и т.д.).\n\n'
+        'После успеха используйте новый пароль при следующем **логине**.'
     ),
     request=ChangePasswordSerializer,
     responses={200: OpenApiResponse(description='Пароль обновлён; дальнейшие запросы — с новым паролем при логине.')},

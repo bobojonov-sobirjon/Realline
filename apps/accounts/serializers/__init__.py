@@ -12,9 +12,14 @@ from apps.accounts.serializers.property_listing import (
     PropertyListingWriteSerializer,
     PropertyTagsReplaceSerializer,
 )
+from apps.accounts.serializers.listing_units import (
+    PropertyListingUnitSerializer,
+    PropertyListingUnitSummaryRowSerializer,
+)
 from apps.accounts.serializers.property_parts import (
     DistrictRefSerializer,
     HighwayRefSerializer,
+    PropertyCategoryRefSerializer,
     PropertyImageSerializer,
     PropertyTagSerializer,
 )
@@ -29,7 +34,10 @@ __all__ = (
     'ConsentMixin',
     'DistrictRefSerializer',
     'HighwayRefSerializer',
+    'PropertyCategoryRefSerializer',
     'PropertyImageSerializer',
+    'PropertyListingUnitSerializer',
+    'PropertyListingUnitSummaryRowSerializer',
     'PropertyListingSerializer',
     'PropertyListingUpdateSerializer',
     'PropertyListingWriteSerializer',

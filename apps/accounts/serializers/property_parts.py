@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.accounts.models import District, Highway, PropertyImage, PropertyTag
+from apps.accounts.models import District, Highway, PropertyCategory, PropertyImage, PropertyTag
 
 
 class PropertyImageSerializer(serializers.ModelSerializer):
@@ -26,3 +26,9 @@ class HighwayRefSerializer(serializers.ModelSerializer):
     class Meta:
         model = Highway
         fields = ('id', 'name')
+
+
+class PropertyCategoryRefSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PropertyCategory
+        fields = ('id', 'name', 'slug', 'sort_order')

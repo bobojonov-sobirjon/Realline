@@ -13,19 +13,24 @@ COMPARE_MAX_ITEMS = 10
 
 _ACC_TAG = ['Accounts — витрина (пользователь)']
 _FAV_DESC = (
-    'Только **JWT** (как и остальной кабинет). Объекты в ответе — как в публичном каталоге '
-    '(полная карточка с `images`, `tags`). В избранное попадают только **опубликованные** объекты.'
+    '**Избранное** привязано к учётной записи агента. Обязателен **JWT**.\n\n'
+    'В списке и при добавлении возвращаются **полные карточки** как в каталоге (`PropertyListingSerializer`: фото, теги, '
+    'район, цена и т.д.). В избранное **можно добавить только опубликованный** объект; неопубликованный id даст ошибку '
+    'при получении полной карточки из витрины.\n\n'
+    'Порядок элементов в **GET** — от новых добавлений к старым.'
 )
 _CMP_DESC = (
-    'Очередь сравнения для авторизованного пользователя. Максимум '
-    f'{COMPARE_MAX_ITEMS} объектов; при превышении — `400`. Только **опубликованные** объявления.'
+    '**Сравнение** — до '
+    f'**{COMPARE_MAX_ITEMS}** опубликованных объявлений на пользователя. При попытке добавить сверх лимита — **HTTP 400** '
+    'с текстом причины. Повторное добавление того же id не дублирует запись (идемпотентно возвращается текущая карточка).\n\n'
+    'Обязателен **JWT**. Формат карточек такой же, как в каталоге.'
 )
 
 
 def _published_listing_qs():
     return (
         PropertyListing.objects.filter(status=PropertyListing.Status.PUBLISHED)
-        .select_related('district', 'highway')
+        .select_related('district', 'highway', 'category')
         .prefetch_related('images', 'tags')
     )
 
@@ -33,7 +38,7 @@ def _published_listing_qs():
 @extend_schema(
     tags=_ACC_TAG,
     summary='Избранное: список объектов',
-    description=_FAV_DESC,
+    description='**GET** — массив объектов в избранном.\n\n' + _FAV_DESC,
     responses={200: PropertyListingSerializer(many=True)},
 )
 class FavoriteListView(APIView):
@@ -53,7 +58,10 @@ class FavoriteListView(APIView):
 @extend_schema(
     tags=_ACC_TAG,
     summary='Избранное: добавить объект',
-    description=_FAV_DESC,
+    description=(
+        '**POST** с телом `{"property_listing": <id>}`. Создаёт связь пользователь–объект; если уже в избранном — **200** '
+        'и актуальная карточка, если новая — **201**.\n\n' + _FAV_DESC
+    ),
     request=ListingIdWriteSerializer,
     responses={201: PropertyListingSerializer},
 )
@@ -76,7 +84,11 @@ class FavoriteAddView(APIView):
 @extend_schema(
     tags=_ACC_TAG,
     summary='Избранное: убрать объект',
-    description='`listing_id` — id объекта недвижимости (не id строки избранного).',
+    description=(
+        '**DELETE** по пути с **`listing_id` в URL** — это **первичный ключ объекта** `PropertyListing`, '
+        'а не внутренний id записи избранного.\n\n'
+        '**204** — удалено; **404** — такой объект не был в избранном.'
+    ),
     responses={204: OpenApiResponse(description='Удалено'), 404: OpenApiResponse(description='Не было в избранном')},
 )
 class FavoriteRemoveView(APIView):
@@ -92,7 +104,7 @@ class FavoriteRemoveView(APIView):
 @extend_schema(
     tags=_ACC_TAG,
     summary='Сравнение: список объектов',
-    description=_CMP_DESC,
+    description='**GET** — текущая корзина сравнения в порядке сохранённых позиций.\n\n' + _CMP_DESC,
     responses={200: PropertyListingSerializer(many=True)},
 )
 class CompareListView(APIView):
@@ -113,7 +125,10 @@ class CompareListView(APIView):
 @extend_schema(
     tags=_ACC_TAG,
     summary='Сравнение: добавить объект',
-    description=_CMP_DESC,
+    description=(
+        '**POST** с `{"property_listing": <id>}`. Учитывается лимит корзины; при успехе возвращается полная карточка.\n\n'
+        + _CMP_DESC
+    ),
     request=ListingIdWriteSerializer,
     responses={
         201: PropertyListingSerializer,
@@ -159,7 +174,10 @@ class CompareAddView(APIView):
 @extend_schema(
     tags=_ACC_TAG,
     summary='Сравнение: убрать объект',
-    description='`listing_id` — id объявления.',
+    description=(
+        '**DELETE**: **`listing_id`** в пути — id объекта **`PropertyListing`**.\n\n'
+        '**204** если запись сравнения удалена; **404** если объекта не было в списке.'
+    ),
     responses={204: OpenApiResponse(description='Удалено'), 404: OpenApiResponse(description='Не было в списке')},
 )
 class CompareRemoveView(APIView):

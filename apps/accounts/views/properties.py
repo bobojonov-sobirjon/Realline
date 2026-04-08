@@ -19,7 +19,11 @@ from apps.accounts.serializers import (
     normalize_tags_input_to_sync,
 )
 from apps.accounts.utils.property_tags import sync_property_tags
-from apps.accounts.views.schemas import _PROPERTY_BODY_DESCRIPTION, _PROPERTY_DETAIL_DESCRIPTION
+from apps.accounts.views.schemas import (
+    _AGENT_LIST_FILTERS_DESCRIPTION,
+    _PROPERTY_BODY_DESCRIPTION,
+    _PROPERTY_DETAIL_DESCRIPTION,
+)
 
 
 @extend_schema_view(
@@ -27,14 +31,24 @@ from apps.accounts.views.schemas import _PROPERTY_BODY_DESCRIPTION, _PROPERTY_DE
         tags=['Accounts — объекты'],
         summary='Список моих объектов',
         description=(
-            'Bearer JWT. Список объявлений текущего агента с фото и статусом. '
-            'Фильтр query: `?status=moderation|published|rejected`. Пагинация: limit/offset (настройки DRF).'
+            '**Назначение:** список объявлений **текущего агента** (владелец = пользователь из JWT).\n\n'
+            '**Авторизация:** обязателен **Bearer access-токен** (роль агента с флагом подтверждения в админке).\n\n'
+            '**Статусы:** здесь видны **все** ваши карточки — «на модерации», «опубликован», «отклонён» — '
+            'в отличие от публичного каталога, где только опубликованные.\n\n'
+            f'{_AGENT_LIST_FILTERS_DESCRIPTION}\n\n'
+            '**Публичная витрина** (объекты всех агентов, только опубликованные): '
+            '`GET .../catalog/properties/`, `GET .../properties/published/`; карточка: '
+            '`GET .../catalog/properties/{id}/` или `GET .../properties/published/{id}/`.'
         ),
     ),
     post=extend_schema(
         tags=['Accounts — объекты'],
         summary='Создать объект (отправка на модерацию)',
-        description=_PROPERTY_BODY_DESCRIPTION,
+        description=(
+            '**Назначение:** создание новой карточки недвижимости от имени вошедшего агента. '
+            'После успешного сохранения объект обычно получает статус **«На модерации»** до проверки администратором.\n\n'
+            f'{_PROPERTY_BODY_DESCRIPTION}'
+        ),
         request={
             'multipart/form-data': PropertyListingWriteSerializer,
             'application/json': PropertyListingWriteSerializer,
@@ -51,7 +65,7 @@ class PropertyListingListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         return (
             PropertyListing.objects.filter(agent=self.request.user)
-            .select_related('district', 'highway')
+            .select_related('district', 'highway', 'category')
             .prefetch_related('images', 'tags')
         )
 
@@ -73,13 +87,22 @@ class PropertyListingListCreateView(generics.ListCreateAPIView):
     get=extend_schema(
         tags=['Accounts — объекты'],
         summary='Карточка объекта',
-        description='Bearer JWT; только владелец объекта. Полная карточка с изображениями и кодом RL-****.',
+        description=(
+            '**Назначение:** получить одну карточку по **id** в контексте личного кабинета.\n\n'
+            '**Доступ:** только **владелец** (агент-владелец записи); иначе **403/404**. JWT обязателен.\n\n'
+            'В ответе полная структура как в каталоге: фото, теги, уникальный код объекта (формат RL- и четыре цифры), '
+            'детали категории, плюс актуальный **status** и **rejection_reason** при отклонении.'
+        ),
         responses={200: PropertyListingSerializer},
     ),
     put=extend_schema(
         tags=['Accounts — объекты'],
         summary='Полное обновление объекта',
-        description=_PROPERTY_DETAIL_DESCRIPTION,
+        description=(
+            '**PUT:** заменить карточку целиком — передайте все обязательные и нужные поля модели записи. '
+            'Удобно при формах «сохранить всё».\n\n'
+            f'{_PROPERTY_DETAIL_DESCRIPTION}'
+        ),
         request={
             'multipart/form-data': PropertyListingUpdateSerializer,
             'application/json': PropertyListingUpdateSerializer,
@@ -89,7 +112,11 @@ class PropertyListingListCreateView(generics.ListCreateAPIView):
     patch=extend_schema(
         tags=['Accounts — объекты'],
         summary='Частичное обновление объекта',
-        description=_PROPERTY_DETAIL_DESCRIPTION,
+        description=(
+            '**PATCH:** обновить только изменившиеся поля (и вложенные блоки `residential_details` / '
+            '`land_plot_details` частично). Остальные значения на сервере сохраняются.\n\n'
+            f'{_PROPERTY_DETAIL_DESCRIPTION}'
+        ),
         request={
             'multipart/form-data': PropertyListingUpdateSerializer,
             'application/json': PropertyListingUpdateSerializer,
@@ -99,7 +126,10 @@ class PropertyListingListCreateView(generics.ListCreateAPIView):
     delete=extend_schema(
         tags=['Accounts — объекты'],
         summary='Удалить объект',
-        description='Безвозвратное удаление объявления и связанных файлов изображений.',
+        description=(
+            '**DELETE:** полное удаление объявления из базы. Связанные **изображения** и файлы с диска '
+            'удаляются каскадно (в пределах модели). Операция **необратима**. Доступ только владельцу.'
+        ),
         responses={204: OpenApiResponse(description='Удалено')},
     ),
 )
@@ -111,7 +141,7 @@ class PropertyListingDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         return (
             PropertyListing.objects.filter(agent=self.request.user)
-            .select_related('district', 'highway')
+            .select_related('district', 'highway', 'category')
             .prefetch_related('images', 'tags')
         )
 
@@ -135,9 +165,13 @@ class PropertyListingDetailView(generics.RetrieveUpdateDestroyAPIView):
     tags=['Accounts — объекты'],
     summary='Заменить все теги объекта',
     description=(
-        '`PUT` с телом `{"tags": ["лес", "дача"]}` (JSON) или form-data с несколькими полями `tags`. '
-        'Полная замена по именам: старые теги объекта удаляются, создаются новые строки (id в ответе — новые). '
-        '`{"tags": []}` — очистить все. Ответ: `[{id, tag_name}, ...]`.'
+        '**Назначение:** быстро обновить только маркетинговые **теги** (чипы на витрине) без остальных полей карточки.\n\n'
+        '**Метод:** `PUT`. Тело JSON: `{"tags": ["лес", "дача"]}` или `multipart/form-data` с повторяющимся полем **`tags`**. '
+        'Список имён задаёт **итоговый** набор: прежние теги объекта удаляются, создаются новые записи '
+        '(в ответе у элементов будут **новые** `id`).\n\n'
+        '**`{"tags": []}`** — удалить все теги у объекта.\n\n'
+        '**Ответ:** массив `[{ "id", "tag_name" }, …]` в актуальном порядке. Некоторые имена тегов участвуют в '
+        'фильтрах каталога (`promo`, `start_sales` и т.д.) — см. описание каталога.'
     ),
     request=PropertyTagsReplaceSerializer,
     responses={200: OpenApiResponse(description='Массив тегов [{id, tag_name}, ...]')},
@@ -167,7 +201,9 @@ class PropertyTagsReplaceView(APIView):
     tags=['Accounts — объекты'],
     summary='Снять объект с публикации',
     description=(
-        'POST без тела. Только владелец. Статус объекта меняется на «На модерации» (аналог кнопки «снять с публикации»).'
+        '**POST** без тела. Только **владелец** объекта.\n\n'
+        'Статус карточки переводится в **«На модерации»**; объект исчезает с публичной витрины '
+        '(каталог и публичные детали вернут **404** по id). Используется как «снять с публикации» без удаления данных.'
     ),
     responses={200: PropertyListingSerializer},
 )
@@ -187,7 +223,9 @@ class PropertyUnpublishView(APIView):
     tags=['Accounts — объекты'],
     summary='Повторно отправить на модерацию',
     description=(
-        'POST без тела. Для отклонённых объявлений: статус снова «На модерации», поле причины отклонения очищается.'
+        '**POST** без тела. Владелец может вызвать после **отклонения** админом.\n\n'
+        'Статус снова **«На модерации»**, поле **`rejection_reason`** очищается. Дальнейшее решение — в админке '
+        '(повторная публикация или снова отклонение).'
     ),
     responses={200: PropertyListingSerializer},
 )
