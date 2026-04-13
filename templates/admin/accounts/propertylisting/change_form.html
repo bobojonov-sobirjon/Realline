@@ -1,0 +1,36 @@
+{% extends "admin/change_form.html" %}
+
+{% block form_top %}
+{{ block.super }}
+{% if change and original %}
+<div class="alert alert-secondary mb-3">
+    <strong>Отклонение объекта</strong> — укажите причину для агента (она попадёт в API уведомлений и в поле «Причина отклонения»).
+    <button type="button" class="btn btn-danger btn-sm ms-2" data-bs-toggle="modal" data-bs-target="#rejectListingModal">
+        Отклонить с причиной…
+    </button>
+</div>
+
+<div class="modal fade" id="rejectListingModal" tabindex="-1" aria-labelledby="rejectListingModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="{% url 'admin:accounts_propertylisting_reject' original.pk %}">
+                {% csrf_token %}
+                <div class="modal-header">
+                    <h5 class="modal-title" id="rejectListingModalLabel">Отклонить объект</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-2">{{ original.code }} — {{ original.name }}</p>
+                    <label for="reject-reason-text" class="form-label">Причина отклонения (обязательно)</label>
+                    <textarea class="form-control" id="reject-reason-text" name="reason" rows="4" required placeholder="Текст увидит агент в личном кабинете"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-danger">Отклонить и сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

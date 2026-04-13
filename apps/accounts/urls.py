@@ -40,6 +40,16 @@ urlpatterns = [
     ),
     path('change-password/', views.ChangePasswordView.as_view(), name='change-password'),
     path(
+        'notifications/listing-rejections/',
+        views.PropertyListingRejectionNoticeListView.as_view(),
+        name='listing-rejection-notice-list',
+    ),
+    path(
+        'notifications/listing-rejections/<int:pk>/',
+        views.PropertyListingRejectionNoticeDetailView.as_view(),
+        name='listing-rejection-notice-detail',
+    ),
+    path(
         'properties/published/<int:pk>/',
         views.PropertyPublishedDetailView.as_view(),
         name='property-published-detail',

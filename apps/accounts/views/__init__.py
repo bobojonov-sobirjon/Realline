@@ -23,6 +23,10 @@ from apps.accounts.views.favorites_compare import (
     FavoriteRemoveView,
 )
 from apps.accounts.views.profile import AgentProfileRetrieveUpdateView, ChangePasswordView
+from apps.accounts.views.listing_rejections import (
+    PropertyListingRejectionNoticeDetailView,
+    PropertyListingRejectionNoticeListView,
+)
 from apps.accounts.views.properties import (
     PropertyListingDetailView,
     PropertyListingListCreateView,
@@ -54,6 +58,8 @@ __all__ = (
     'PropertyCategoryListView',
     'PropertyListingDetailView',
     'PropertyListingListCreateView',
+    'PropertyListingRejectionNoticeDetailView',
+    'PropertyListingRejectionNoticeListView',
     'PropertyResubmitView',
     'PropertyTagsReplaceView',
     'PropertyUnpublishView',

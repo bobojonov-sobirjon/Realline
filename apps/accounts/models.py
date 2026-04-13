@@ -333,6 +333,32 @@ class PropertyListing(models.Model):
         return f'RL-{suffix}'
 
 
+class PropertyListingRejection(models.Model):
+    """
+    Запись об отклонении объекта модератором: текст для агента, просмотр через API (is_seen).
+    Создаётся из админки (кнопка «Отклонить с причиной») или при сохранении карточки со статусом «Отклонён».
+    """
+
+    listing = models.ForeignKey(
+        PropertyListing,
+        on_delete=models.CASCADE,
+        related_name='rejection_notices',
+        verbose_name=_('объект'),
+    )
+    reason = models.TextField(_('причина отклонения'))
+    created_at = models.DateTimeField(_('создано'), auto_now_add=True)
+    is_seen = models.BooleanField(_('просмотрено агентом'), default=False)
+    seen_at = models.DateTimeField(_('когда просмотрено'), null=True, blank=True)
+
+    class Meta:
+        verbose_name = _('уведомление об отклонении')
+        verbose_name_plural = _('уведомления об отклонении')
+        ordering = ['-created_at']
+
+    def __str__(self) -> str:
+        return f'{self.listing.code} @ {self.created_at:%Y-%m-%d %H:%M}'
+
+
 class ResidentialListingDetails(models.Model):
     """Общий блок карточки для новостроек, вторички, загорода, коттеджей, дач (как в макете ЖК)."""
 

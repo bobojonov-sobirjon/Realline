@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse
 from django.utils.html import format_html
@@ -25,6 +26,7 @@ from apps.accounts.models import (
     ResidentialListingDetails,
     PropertyImage,
     PropertyListing,
+    PropertyListingRejection,
     PropertyListingUnit,
     PropertyTag,
 )
@@ -458,17 +460,47 @@ def _set_property_status(request, queryset, status_value, label_done):
     messages.success(request, f'{label_done}: {n} шт.')
 
 
+class PropertyListingAdminForm(forms.ModelForm):
+    class Meta:
+        model = PropertyListing
+        fields = '__all__'
+
+    def clean(self):
+        cleaned_data = super().clean()
+        st = cleaned_data.get('status')
+        reason = (cleaned_data.get('rejection_reason') or '').strip()
+        if st == PropertyListing.Status.REJECTED and not reason:
+            raise ValidationError(
+                {
+                    'rejection_reason': (
+                        'Укажите текст причины или воспользуйтесь кнопкой «Отклонить с причиной» над формой.'
+                    ),
+                }
+            )
+        return cleaned_data
+
+
+class PropertyListingRejectionInline(admin.TabularInline):
+    model = PropertyListingRejection
+    extra = 0
+    can_delete = False
+    fields = ('reason', 'created_at', 'is_seen', 'seen_at')
+    readonly_fields = ('reason', 'created_at', 'is_seen', 'seen_at')
+    verbose_name_plural = 'История отклонений (уведомления для агента в API)'
+
+
 @admin.register(PropertyListing)
 class PropertyListingAdmin(admin.ModelAdmin):
+    form = PropertyListingAdminForm
+    change_form_template = 'admin/accounts/propertylisting/change_form.html'
     list_display = (
         'code',
         'name',
         'category',
         'property_type',
-        'is_actual_offer',
+        'status',
         'agent',
         'price',
-        'status',
         'created_at',
     )
     list_filter = ('status', 'category', 'property_type', 'is_actual_offer', 'created_at')
@@ -577,12 +609,76 @@ class PropertyListingAdmin(admin.ModelAdmin):
             cls = _detail_inline_class_for_category_slug(slug or '')
             if cls:
                 blocks.append(cls)
-        return blocks + [PropertyTagInline, PropertyImageInline, PropertyListingUnitInline]
+        return blocks + [
+            PropertyTagInline,
+            PropertyImageInline,
+            PropertyListingUnitInline,
+            PropertyListingRejectionInline,
+        ]
+
+    def get_urls(self):
+        return [
+            path(
+                '<path:object_id>/reject-with-reason/',
+                self.admin_site.admin_view(self.reject_with_reason_view),
+                name='accounts_propertylisting_reject',
+            ),
+            *super().get_urls(),
+        ]
+
+    @transaction.atomic
+    def reject_with_reason_view(self, request, object_id):
+        listing = get_object_or_404(PropertyListing, pk=object_id)
+        if not self.has_change_permission(request, listing):
+            messages.error(request, 'Нет прав на изменение объекта.')
+            return redirect('admin:accounts_propertylisting_change', object_id)
+        if request.method != 'POST':
+            messages.error(request, 'Используйте форму «Отклонить с причиной» (POST).')
+            return redirect('admin:accounts_propertylisting_change', object_id)
+        reason = (request.POST.get('reason') or '').strip()
+        if not reason:
+            messages.error(request, 'Укажите причину отклонения.')
+            return redirect('admin:accounts_propertylisting_change', object_id)
+        listing.status = PropertyListing.Status.REJECTED
+        listing.rejection_reason = reason
+        listing.save(update_fields=['status', 'rejection_reason', 'updated_at'])
+        PropertyListingRejection.objects.create(listing=listing, reason=reason, is_seen=False)
+        messages.success(
+            request,
+            'Объект отклонён. Агент увидит причину в карточке и в GET /api/v1/accounts/notifications/listing-rejections/.',
+        )
+        return redirect('admin:accounts_propertylisting_change', object_id)
+
+    def save_model(self, request, obj, form, change):
+        prev_status = None
+        prev_reason = ''
+        if change and obj.pk:
+            try:
+                old = PropertyListing.objects.get(pk=obj.pk)
+                prev_status = old.status
+                prev_reason = (old.rejection_reason or '').strip()
+            except PropertyListing.DoesNotExist:
+                pass
+        super().save_model(request, obj, form, change)
+        if obj.status != PropertyListing.Status.REJECTED:
+            return
+        reason = (obj.rejection_reason or '').strip()
+        if not reason:
+            return
+        should_log = False
+        if not change:
+            should_log = True
+        elif prev_status != PropertyListing.Status.REJECTED:
+            should_log = True
+        elif prev_reason != reason:
+            should_log = True
+        if should_log:
+            PropertyListingRejection.objects.create(listing=obj, reason=reason, is_seen=False)
+
     raw_id_fields = ('agent',)
     actions = (
         'mark_status_published',
         'mark_status_moderation',
-        'mark_status_rejected',
     )
 
     @admin.action(description='Статус: опубликован')
@@ -601,15 +697,6 @@ class PropertyListingAdmin(admin.ModelAdmin):
             queryset,
             PropertyListing.Status.MODERATION,
             'На модерации',
-        )
-
-    @admin.action(description='Статус: отклонён')
-    def mark_status_rejected(self, request, queryset):
-        _set_property_status(
-            request,
-            queryset,
-            PropertyListing.Status.REJECTED,
-            'Отклонено',
         )
 
 
