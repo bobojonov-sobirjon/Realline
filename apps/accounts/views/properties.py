@@ -74,6 +74,14 @@ class PropertyListingListCreateView(generics.ListCreateAPIView):
             return PropertyListingWriteSerializer
         return PropertyListingSerializer
 
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        inst = serializer.instance
+        if inst.status == PropertyListing.Status.MODERATION:
+            from apps.accounts.utils.moderation_notify import schedule_new_listing_moderation_email
+
+            schedule_new_listing_moderation_email(inst.pk)
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)

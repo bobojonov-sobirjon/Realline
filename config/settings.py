@@ -87,6 +87,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'config.context_processors.admin_moderation_pending',
             ],
         },
     },
@@ -444,6 +445,24 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'sobirbobojonov2000@gmail.com'
 EMAIL_HOST_PASSWORD = 'harntaefuxuvlqqw'
 DEFAULT_FROM_EMAIL = 'sobirbobojonov2000@gmail.com'
+
+# Уведомления о новых объектах с API (POST .../properties/). Список email через запятую.
+MODERATION_NOTIFY_EMAILS = [
+    x.strip()
+    for x in os.getenv('MODERATION_NOTIFY_EMAILS', '').split(',')
+    if x.strip()
+]
+# Полный URL сайта без слэша в конце — для ссылки «открыть в админке» в письме.
+PUBLIC_BASE_URL = os.getenv('PUBLIC_BASE_URL', 'https://realline.cardeurope.ru').rstrip('/')
+# Дополнительно можно задать ADMINS (стандарт Django): "Имя,email;Имя2,email2"
+_admins_raw = os.getenv('DJANGO_ADMINS', '')
+ADMINS = []
+for chunk in _admins_raw.split(';'):
+    chunk = chunk.strip()
+    if not chunk or ',' not in chunk:
+        continue
+    name, email = chunk.split(',', 1)
+    ADMINS.append((name.strip(), email.strip()))
 
 
 # DRF Spectacular Configuration

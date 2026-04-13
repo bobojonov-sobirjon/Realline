@@ -1,0 +1,12 @@
+{% extends "admin/base.html" %}
+{% block messages %}
+{% if admin_moderation_pending_count %}
+<div class="alert alert-warning alert-dismissible fade show" role="alert">
+    <i class="fas fa-hourglass-half me-1"></i>
+    На модерации объектов: <strong>{{ admin_moderation_pending_count }}</strong>.
+    <a href="{% url 'admin:accounts_propertylisting_changelist' %}?status=moderation" class="alert-link">Открыть список</a>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}
