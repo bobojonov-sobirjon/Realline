@@ -498,13 +498,27 @@ class PropertyListingAdmin(admin.ModelAdmin):
         'name',
         'category',
         'property_type',
-        'status',
+        'status_display',
         'agent',
         'price',
         'created_at',
     )
     list_filter = ('status', 'category', 'property_type', 'is_actual_offer', 'created_at')
     list_select_related = ('agent', 'category')
+
+    @admin.display(description='Статус', ordering='status')
+    def status_display(self, obj):
+        label = obj.get_status_display()
+        st = obj.status
+        if st == PropertyListing.Status.REJECTED:
+            css = 'badge rounded-pill bg-danger'
+        elif st == PropertyListing.Status.MODERATION:
+            css = 'badge rounded-pill bg-warning text-dark'
+        elif st == PropertyListing.Status.PUBLISHED:
+            css = 'badge rounded-pill bg-success'
+        else:
+            css = 'badge rounded-pill bg-secondary'
+        return format_html('<span class="{}">{}</span>', css, label)
     fieldsets = (
         (
             'Карточка объекта',
