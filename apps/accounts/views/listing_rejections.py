@@ -24,6 +24,7 @@ class PropertyListingRejectionNoticeListView(generics.ListAPIView):
     serializer_class = PropertyListingRejectionNoticeSerializer
 
     def get_queryset(self):
+        # Только объекты, где agent = текущий пользователь JWT (как PropertyListing.objects.filter(agent=request.user)).
         return (
             PropertyListingRejection.objects.filter(listing__agent=self.request.user)
             .select_related('listing')
@@ -47,6 +48,7 @@ class PropertyListingRejectionNoticeDetailView(generics.RetrieveAPIView):
     lookup_field = 'pk'
 
     def get_queryset(self):
+        # Только уведомления по listing.agent = request.user; иначе get_object() → 404.
         return PropertyListingRejection.objects.filter(listing__agent=self.request.user).select_related(
             'listing'
         )
