@@ -1,8 +1,11 @@
 """
 Добавляет демо-лоты PropertyListingUnit для ЖК (не для land_plot).
 
+  python manage.py seed_demo_units
+  # то же, что --fill-published: всем опубликованным без лотов (удобно после seed_fake_listings на сервере)
+
   python manage.py seed_demo_units --listing 20
-  python manage.py seed_demo_units --fill-published   # всем опубликованным без лотов
+  python manage.py seed_demo_units --fill-published   # явно
 
 Родительский объект должен быть в статусе «Опубликован» (как в каталоге).
 """
@@ -16,7 +19,10 @@ from apps.accounts.models import PropertyListing
 
 
 class Command(BaseCommand):
-    help = 'Добавляет демо PropertyListingUnit для указанного или всех опубликованных ЖК.'
+    help = (
+        'Добавляет демо PropertyListingUnit. Без аргументов: всем опубликованным ЖК без лотов '
+        '(эквивалент --fill-published). Или: --listing ID для одного объекта.'
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -29,7 +35,7 @@ class Command(BaseCommand):
         parser.add_argument(
             '--fill-published',
             action='store_true',
-            help='Заполнить все опубликованные объекты без лотов (кроме land_plot).',
+            help='Явно: заполнить все опубликованные объекты без лотов (кроме land_plot). Без флага и без --listing поведение то же.',
         )
         parser.add_argument(
             '--per-listing',
@@ -64,28 +70,26 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.SUCCESS(f'id={lid}: создано лотов — {n}.'))
             return
 
-        if fill:
-            qs = (
-                PropertyListing.objects.filter(status=PropertyListing.Status.PUBLISHED)
-                .exclude(category__slug='land_plot')
-                .annotate(u=Count('units'))
-                .filter(u=0)
-            )
-            total_units = 0
-            n_listings = 0
-            for listing in qs:
-                add = create_demo_units_for_listing(listing, count=per)
-                if add:
-                    n_listings += 1
-                    total_units += add
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f'Объявлений без лотов обработано: {qs.count()} '
-                    f'({n_listings} с созданными лотами); всего создано записей лотов: {total_units}.'
-                )
-            )
-            return
+        # По умолчанию (без --listing): как --fill-published
+        if not fill:
+            self.stdout.write('Параметры не указаны — режим заполнения всех опубликованных без лотов (--fill-published).\n')
 
+        qs = (
+            PropertyListing.objects.filter(status=PropertyListing.Status.PUBLISHED)
+            .exclude(category__slug='land_plot')
+            .annotate(u=Count('units'))
+            .filter(u=0)
+        )
+        total_units = 0
+        n_listings = 0
+        for listing in qs:
+            add = create_demo_units_for_listing(listing, count=per)
+            if add:
+                n_listings += 1
+                total_units += add
         self.stdout.write(
-            self.style.ERROR('Укажите --listing ID или --fill-published. См. python manage.py help seed_demo_units')
+            self.style.SUCCESS(
+                f'Объявлений без лотов обработано: {qs.count()} '
+                f'({n_listings} с созданными лотами); всего создано записей лотов: {total_units}.'
+            )
         )

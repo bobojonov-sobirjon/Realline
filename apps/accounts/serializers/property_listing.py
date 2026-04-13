@@ -1,5 +1,6 @@
 import json
 
+from django.core.files.base import ContentFile
 from rest_framework import serializers
 
 from apps.accounts.filters import (
@@ -31,6 +32,20 @@ from apps.accounts.utils.property_tags import sync_property_tags
 
 _NOT_PROVIDED = object()
 _LAND_CATEGORY_SLUG = 'land_plot'
+
+
+def _materialize_image_upload(upload):
+    """
+    After DRF ImageField validation, replace the upload with an in-memory ContentFile.
+
+    Larger files are otherwise stored as TemporaryUploadedFile (Spooled/temp disk) whose
+    open stream is a BufferedRandom and can trigger "cannot pickle" if anything in the
+    stack serializes request or validated data (workers, some middleware, etc.).
+    """
+    upload.seek(0)
+    data = upload.read()
+    name = getattr(upload, 'name', None) or 'image'
+    return ContentFile(data, name=name)
 
 
 def _valid_detail_field_names(model_cls):
@@ -472,6 +487,9 @@ class PropertyListingWriteSerializer(serializers.ModelSerializer):
         ret = super().to_internal_value(mut)
         if tags_coerced is not None:
             ret['tags'] = normalize_tags_input_to_sync(tags_coerced)
+        imgs = ret.get('images')
+        if imgs:
+            ret['images'] = [_materialize_image_upload(f) for f in imgs]
         return ret
 
     def create(self, validated_data):

@@ -1,18 +1,11 @@
 # Import necessary modules and functions
 from django.http import JsonResponse
+from django.utils.deprecation import MiddlewareMixin
 from rest_framework import status
 
 
 # Middleware for handling JSON error responses
-class JsonErrorResponseMiddleware:
-    def __init__(self, get_response):
-        self.get_response = get_response
-
-    def __call__(self, request):
-        # Get the response from the view function
-        response = self.get_response(request)
-        return response
-
+class JsonErrorResponseMiddleware(MiddlewareMixin):
     def process_exception(self, request, exception):
         # Admin must render HTML/traceback; do not return JSON for /admin/
         if request.path.startswith('/admin/'):

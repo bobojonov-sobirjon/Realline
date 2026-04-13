@@ -150,6 +150,10 @@ MEDIA_URL = "/media/"
 # Production uchun /var/www/media, development uchun local media folder
 MEDIA_ROOT = os.getenv('MEDIA_ROOT', '/var/www/media')
 
+# Above the default 2.5 MiB, uploads use a temp file (BufferedRandom) which is not picklable;
+# some deployments hit "cannot pickle '_io.BufferedRandom' object" on multipart property create.
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv('FILE_UPLOAD_MAX_MEMORY_SIZE', str(26_214_400)))  # 25 MiB
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv('DATA_UPLOAD_MAX_MEMORY_SIZE', str(26_214_400)))
 
 LOCALE_PATHS = [
     os.path.join(BASE_DIR, 'locale'),
