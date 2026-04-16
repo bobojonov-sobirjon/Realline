@@ -43,7 +43,7 @@ class SiteGeoDetectSerializer(serializers.Serializer):
 class HeroSlideSerializer(serializers.ModelSerializer):
     class Meta:
         model = HeroSlide
-        fields = ('id', 'title', 'subtitle', 'image', 'sort_order')
+        fields = ('id', 'site_region', 'title', 'subtitle', 'image', 'sort_order')
 
 
 class AdvantageCardSerializer(serializers.ModelSerializer):

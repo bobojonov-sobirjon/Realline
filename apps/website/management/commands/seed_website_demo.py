@@ -33,6 +33,7 @@ from apps.website.models import (
     ServicePillTag,
     ServiceWorkflowStep,
     SiteContacts,
+    SiteRegion,
     TeamMember,
 )
 
@@ -83,6 +84,7 @@ def _seed_consultation_leads(stdout, style) -> None:
 
 
 def _seed_hero_slides(stdout, style) -> None:
+    region = SiteRegion.objects.filter(is_active=True).order_by('sort_order', 'id').first()
     slides = [
         (0, "Недвижимость в Санкт-Петербурге", "Подбор, проверка и сопровождение сделки под ключ."),
         (1, "Ипотека без лишней суеты", "Поможем собрать документы и согласовать сроки с банком."),
@@ -94,11 +96,15 @@ def _seed_hero_slides(stdout, style) -> None:
         obj, was_new = HeroSlide.objects.get_or_create(
             title=title,
             defaults={
+                "site_region": region,
                 "subtitle": subtitle,
                 "sort_order": order,
                 "is_active": True,
             },
         )
+        if (obj.site_region_id is None) and region:
+            obj.site_region = region
+            obj.save(update_fields=["site_region"])
         if was_new:
             obj.image.save(f"demo-hero-{order}.png", _png(color), save=True)
             created += 1

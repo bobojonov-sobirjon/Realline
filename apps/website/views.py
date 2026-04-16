@@ -1,4 +1,5 @@
-from django.db.models import Prefetch
+import django_filters
+from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status
@@ -167,7 +168,37 @@ class SiteGeoDetectAPIView(APIView):
 @extend_schema(
     tags=['Сайт — баннеры'],
     summary='Слайды / баннеры главной',
-    description=_PUB + '\n\n**Назначение:** элементы карусели / hero-блока на главной (изображение, заголовок, ссылка и т.д.).',
+    description=(
+        _PUB
+        + '\n\n**Назначение:** элементы карусели / hero-блока на главной (изображение, заголовок, ссылка и т.д.).\n\n'
+        + '**Фильтр (опционально):** `site_region` (ID) или `site_region_slug` (slug) — '
+        + 'оставить слайды для конкретного региона. '
+        + 'Если нужно добавить «общие» слайды (где регион не задан) — передайте `include_global=1`.\n'
+        + 'Если переданы оба (`site_region` и `site_region_slug`) — приоритет у `site_region`.'
+    ),
+    parameters=[
+        OpenApiParameter(
+            name='site_region',
+            type=int,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description='ID региона (`SiteRegion.id`).',
+        ),
+        OpenApiParameter(
+            name='site_region_slug',
+            type=str,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description='Slug региона (`SiteRegion.slug`). По умолчанию возвращаются только слайды этого региона.',
+        ),
+        OpenApiParameter(
+            name='include_global',
+            type=int,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description='Если `1`, то вместе с региональными вернуть и «общие» слайды (где `site_region` не задан).',
+        ),
+    ],
     responses={200: HeroSlideSerializer(many=True)},
 )
 class HeroSlideListView(APIView):
@@ -176,7 +207,27 @@ class HeroSlideListView(APIView):
 
     def get(self, request):
         qs = HeroSlide.objects.filter(is_active=True)
-        return Response(HeroSlideSerializer(qs, many=True, context={'request': request}).data)
+        filterset = HeroSlideFilter(request.query_params, queryset=qs)
+        if not filterset.is_valid():
+            return Response(
+                {'detail': 'Filter parametrlari notogri.', 'errors': filterset.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        qs = filterset.qs
+        if not request.query_params.get('site_region') and not request.query_params.get('site_region_slug'):
+            qs = qs.filter(site_region__isnull=True)
+
+        serializer = HeroSlideSerializer(qs, many=True, context={'request': request})
+        return Response(serializer.data)
+
+
+class HeroSlideFilter(django_filters.FilterSet):
+    site_region = django_filters.NumberFilter(field_name='site_region_id')
+    site_region_slug = django_filters.CharFilter(field_name='site_region__slug', lookup_expr='iexact')
+
+    class Meta:
+        model = HeroSlide
+        fields = ('site_region', 'site_region_slug')
 
 
 @extend_schema(

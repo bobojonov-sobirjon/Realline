@@ -30,8 +30,9 @@ class SiteRegionAdmin(admin.ModelAdmin):
 
 @admin.register(HeroSlide)
 class HeroSlideAdmin(admin.ModelAdmin):
-    list_display = ('title', 'sort_order', 'is_active')
+    list_display = ('title', 'site_region', 'sort_order', 'is_active')
     list_editable = ('sort_order', 'is_active')
+    list_filter = ('is_active', 'site_region')
 
 
 @admin.register(AdvantageCard)

@@ -67,6 +67,15 @@ class HeroSlide(models.Model):
     title = models.CharField(_('заголовок'), max_length=500)
     subtitle = models.CharField(_('подзаголовок'), max_length=800, blank=True)
     image = models.ImageField(_('изображение'), upload_to=upload_hero)
+    site_region = models.ForeignKey(
+        SiteRegion,
+        on_delete=models.PROTECT,
+        related_name='hero_slides',
+        verbose_name=_('регион (город)'),
+        help_text=_('Опционально: если указан, слайд показывается только для этого региона.'),
+        null=True,
+        blank=True,
+    )
     sort_order = models.PositiveSmallIntegerField(_('порядок'), default=0)
     is_active = models.BooleanField(_('показывать'), default=True)
 
