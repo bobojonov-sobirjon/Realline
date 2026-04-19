@@ -16,6 +16,7 @@ from apps.accounts.models import (
     PropertyCategory,
     PropertyImage,
     PropertyListing,
+    PropertyListingUnit,
     ResidentialListingDetails,
     UserCompareListing,
     UserFavoriteListing,
@@ -160,6 +161,38 @@ def listing_favorite_compare_context(request) -> dict:
     return {'favorite_listing_ids': fav, 'compare_listing_ids': cmp_ids}
 
 
+class PropertyListingUnitSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PropertyListingUnit
+        fields = (
+            'id',
+            'layout_label',
+            'title',
+            'building',
+            'completion_text',
+            'price',
+            'rooms',
+            'total_area',
+            'kitchen_area',
+            'floor',
+            'floors_total',
+            'finishing',
+            'bathroom_summary',
+            'ceiling_height',
+            'balcony_summary',
+            'payment_methods',
+            'banks',
+            'is_apartments_legal',
+            'is_assignment',
+            'is_two_level',
+            'has_master_bedroom',
+            'price_per_sqm',
+            'image',
+            'sort_order',
+            'created_at',
+        )
+        
+
 class PropertyListingSerializer(serializers.ModelSerializer):
     images = PropertyImageSerializer(many=True, read_only=True)
     tags = PropertyTagSerializer(many=True, read_only=True)
@@ -167,10 +200,11 @@ class PropertyListingSerializer(serializers.ModelSerializer):
     district = DistrictRefSerializer(read_only=True)
     highway = HighwayRefSerializer(read_only=True)
     category = PropertyCategoryRefSerializer(read_only=True, allow_null=True)
-    residential_details = serializers.SerializerMethodField()
-    land_plot_details = serializers.SerializerMethodField()
+    residential_details = ResidentialListingDetailsSerializer(read_only=True, allow_null=True)
+    land_plot_details = LandPlotListingDetailsSerializer(read_only=True, allow_null=True)
     is_favourite = serializers.SerializerMethodField()
     is_compare = serializers.SerializerMethodField()
+    listing_units = PropertyListingUnitSerializer(many=True, read_only=True, source='units')
     lat = serializers.DecimalField(
         source='latitude',
         max_digits=20,
@@ -242,6 +276,7 @@ class PropertyListingSerializer(serializers.ModelSerializer):
             'is_compare',
             'residential_details',
             'land_plot_details',
+            'listing_units',
         )
         read_only_fields = (
             'id',
@@ -261,6 +296,7 @@ class PropertyListingSerializer(serializers.ModelSerializer):
             'residential_details',
             'land_plot_details',
             'is_actual_offer',
+            'listing_units',
         )
 
     def get_is_favourite(self, obj) -> bool:
@@ -274,18 +310,6 @@ class PropertyListingSerializer(serializers.ModelSerializer):
         if not ids:
             return False
         return obj.pk in ids
-
-    def get_residential_details(self, obj):
-        row = ResidentialListingDetails.objects.filter(listing_id=obj.pk).first()
-        if not row:
-            return None
-        return ResidentialListingDetailsSerializer(row).data
-
-    def get_land_plot_details(self, obj):
-        row = LandPlotListingDetails.objects.filter(listing_id=obj.pk).first()
-        if not row:
-            return None
-        return LandPlotListingDetailsSerializer(row).data
 
 
 class PropertyListingWriteSerializer(serializers.ModelSerializer):

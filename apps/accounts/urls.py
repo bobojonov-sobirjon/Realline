@@ -58,6 +58,16 @@ urlpatterns = [
     path('properties/', views.PropertyListingListCreateView.as_view(), name='property-list-create'),
     path('properties/<int:pk>/tags/', views.PropertyTagsReplaceView.as_view(), name='property-tags-replace'),
     path('properties/<int:pk>/', views.PropertyListingDetailView.as_view(), name='property-detail'),
+    path(
+        'properties/<int:pk>/units/',
+        views.PropertyListingUnitAgentListCreateView.as_view(),
+        name='property-units-agent-list-create',
+    ),
+    path(
+        'properties/<int:pk>/units/<int:unit_pk>/',
+        views.PropertyListingUnitAgentDetailView.as_view(),
+        name='property-units-agent-detail',
+    ),
     path('properties/<int:pk>/unpublish/', views.PropertyUnpublishView.as_view(), name='property-unpublish'),
     path('properties/<int:pk>/resubmit/', views.PropertyResubmitView.as_view(), name='property-resubmit'),
 ]

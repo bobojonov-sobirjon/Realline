@@ -1,6 +1,6 @@
 from rest_framework.permissions import BasePermission
 
-from apps.accounts.models import PropertyListing
+from apps.accounts.models import PropertyListing, PropertyListingUnit
 
 
 class IsAgentOwner(BasePermission):
@@ -9,4 +9,6 @@ class IsAgentOwner(BasePermission):
     def has_object_permission(self, request, view, obj):
         if isinstance(obj, PropertyListing):
             return obj.agent_id == request.user.pk
+        if isinstance(obj, PropertyListingUnit):
+            return obj.listing.agent_id == request.user.pk
         return False

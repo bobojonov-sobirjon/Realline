@@ -54,7 +54,13 @@ class PropertyCatalogListView(generics.ListAPIView):
         return (
             PropertyListing.objects.filter(status=PropertyListing.Status.PUBLISHED)
             .select_related('district', 'highway', 'category')
-            .prefetch_related('images', 'tags')
+            .prefetch_related(
+                'images',
+                'tags',
+                'units',
+                'residential_details',
+                'land_plot_details',
+            )
             .order_by('-created_at')
         )
 
@@ -91,7 +97,13 @@ class PropertyCatalogDetailView(generics.RetrieveAPIView):
         return (
             PropertyListing.objects.filter(status=PropertyListing.Status.PUBLISHED)
             .select_related('district', 'highway', 'category')
-            .prefetch_related('images', 'tags')
+            .prefetch_related(
+                'images',
+                'tags',
+                'units',
+                'residential_details',
+                'land_plot_details',
+            )
         )
 
 

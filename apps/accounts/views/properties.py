@@ -66,7 +66,13 @@ class PropertyListingListCreateView(generics.ListCreateAPIView):
         return (
             PropertyListing.objects.filter(agent=self.request.user)
             .select_related('district', 'highway', 'category')
-            .prefetch_related('images', 'tags')
+            .prefetch_related(
+                'images',
+                'tags',
+                'units',
+                'residential_details',
+                'land_plot_details',
+            )
         )
 
     def get_serializer_class(self):
@@ -150,7 +156,13 @@ class PropertyListingDetailView(generics.RetrieveUpdateDestroyAPIView):
         return (
             PropertyListing.objects.filter(agent=self.request.user)
             .select_related('district', 'highway', 'category')
-            .prefetch_related('images', 'tags')
+            .prefetch_related(
+                'images',
+                'tags',
+                'units',
+                'residential_details',
+                'land_plot_details',
+            )
         )
 
     def get_serializer_class(self):

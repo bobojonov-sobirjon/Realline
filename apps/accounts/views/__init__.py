@@ -34,6 +34,10 @@ from apps.accounts.views.properties import (
     PropertyTagsReplaceView,
     PropertyUnpublishView,
 )
+from apps.accounts.views.property_units import (
+    PropertyListingUnitAgentDetailView,
+    PropertyListingUnitAgentListCreateView,
+)
 
 __all__ = (
     'AgentProfileRetrieveUpdateView',
@@ -63,4 +67,6 @@ __all__ = (
     'PropertyResubmitView',
     'PropertyTagsReplaceView',
     'PropertyUnpublishView',
+    'PropertyListingUnitAgentListCreateView',
+    'PropertyListingUnitAgentDetailView',
 )
