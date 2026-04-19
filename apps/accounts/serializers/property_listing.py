@@ -56,6 +56,32 @@ def _valid_detail_field_names(model_cls):
     }
 
 
+def _normalize_nested_detail_block(value, nest_key: str):
+    """
+    Клиенты иногда шлют блок как JSON-массив из одного объекта `[{...}]` (form-data строкой).
+    Сериализатор ожидает один объект `{...}` (как в БД OneToOne).
+    """
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, list):
+        if len(value) == 0:
+            return None
+        if len(value) == 1 and isinstance(value[0], dict):
+            return value[0]
+        raise serializers.ValidationError(
+            {
+                nest_key: (
+                    'Ожидается один объект {...}. Передайте объект, а не массив из нескольких элементов.'
+                )
+            }
+        ) from None
+    raise serializers.ValidationError(
+        {nest_key: 'Ожидается объект, JSON-массив из одного объекта или JSON-строка.'}
+    )
+
+
 def _persist_detail_row(model_cls, listing, patch: dict | None, *, merge: bool):
     valid = _valid_detail_field_names(model_cls)
     patch = {k: v for k, v in (patch or {}).items() if k in valid}
@@ -456,8 +482,7 @@ class PropertyListingWriteSerializer(serializers.ModelSerializer):
                         raise serializers.ValidationError(
                             {nest_key: 'Ожидается JSON-объект в строке.'}
                         ) from None
-            elif raw is not None and not isinstance(raw, dict):
-                raise serializers.ValidationError({nest_key: 'Ожидается объект или JSON-строка.'})
+            mut[nest_key] = _normalize_nested_detail_block(mut.get(nest_key), nest_key)
 
         if request and getattr(request, 'FILES', None):
             files = request.FILES.getlist('images')
