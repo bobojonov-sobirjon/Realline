@@ -3,10 +3,10 @@ from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
 from rest_framework import generics, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from apps.accounts.filters import ListingUnitFilter
+from apps.accounts.filters import ListingUnitFilter 
 from apps.accounts.models import PropertyListing, PropertyListingUnit
 from apps.accounts.permissions import IsAgentOwner
 from apps.accounts.serializers.listing_units import PropertyListingUnitSerializer
@@ -37,7 +37,7 @@ from apps.accounts.serializers.listing_units import PropertyListingUnitSerialize
     ),
 )
 class PropertyListingUnitAgentListCreateView(generics.ListCreateAPIView):
-    permission_classes = [IsAuthenticated, IsAgentOwner]
+    permission_classes = [AllowAny]
     serializer_class = PropertyListingUnitSerializer
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     filter_backends = [DjangoFilterBackend]
@@ -91,7 +91,7 @@ class PropertyListingUnitAgentListCreateView(generics.ListCreateAPIView):
     ),
 )
 class PropertyListingUnitAgentDetailView(generics.RetrieveUpdateDestroyAPIView):
-    permission_classes = [IsAuthenticated, IsAgentOwner]
+    permission_classes = [AllowAny]
     serializer_class = PropertyListingUnitSerializer
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     lookup_url_kwarg = 'unit_pk'
