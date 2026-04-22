@@ -1,0 +1,4677 @@
+openapi: 3.0.3
+info:
+  title: Realline / RealEstateRus API
+  version: v1
+  description: REST API для агентов, публичного каталога и **контента сайта** (витрина).
+    JWT (Bearer) для кабинета агента, избранного и сравнения. Эндпоинты **`/api/v1/site/`**
+    — публично (GET), кроме POST заявки на консультацию.
+  contact:
+    name: API Support
+    email: contact@snippets.local
+  license:
+    name: BSD License
+paths:
+  /api/v1/accounts/catalog/categories/:
+    get:
+      operationId: v1_accounts_catalog_categories_list
+      description: |-
+        **Назначение:** словарь типов объектов для форм и для фильтра каталога (`category`, `category_slug`).
+
+        **Доступ:** публично, без авторизации. Пагинации нет — отдаётся полный активный справочник (сортировка: `sort_order`, затем название).
+
+        **Поля:** `id`, `name`, `slug`, `sort_order`. При создании/редактировании объекта в API передавайте **`category_id`** = `id` из этого списка.
+
+        **Важно:** если **slug** = `land_plot`, в карточке объекта используется блок **`land_plot_details`**; для всех остальных slug — общий блок **`residential_details`** (новостройки, вторичка, загород и т.д.).
+      summary: Справочник категорий витрины
+      tags:
+      - Каталог
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PropertyCategoryRef'
+          description: ''
+  /api/v1/accounts/catalog/districts/:
+    get:
+      operationId: v1_accounts_catalog_districts_list
+      description: |-
+        **Назначение:** подсказка для поля «Район» в формах и фильтр **`district`** в каталоге (значение = **id** записи).
+
+        **Доступ:** публично. Формат ответа: массив `{ id, name }`. Список отсортирован по названию.
+
+        В теле создания/обновления объекта передаётся **`district_id`**, не текст названия.
+
+        **Фильтр по региону:** можно передать query-параметр **`region`** (или legacy **`country`**) со значением `moscow` или `saint_petersburg`.
+      summary: Справочник районов
+      parameters:
+      - in: query
+        name: country
+        schema:
+          type: string
+        description: Alias для `region` (поддержка старого параметра).
+      - in: query
+        name: region
+        schema:
+          type: string
+        description: 'Регион справочника: `moscow` или `saint_petersburg`.'
+      tags:
+      - Каталог
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DistrictRef'
+          description: ''
+  /api/v1/accounts/catalog/highways/:
+    get:
+      operationId: v1_accounts_catalog_highways_list
+      description: |-
+        **Назначение:** выбор шоссе при заполнении карточки и фильтр **`highway`** в каталоге.
+
+        **Доступ:** публично. Ответ: `{ id, name }` для каждой записи.
+
+        В API объекта поле **`highway_id`** — внешний ключ на `id` из этого списка; текст шоссе вручную не подставляется.
+
+        **Фильтр по региону:** можно передать query-параметр **`region`** (или legacy **`country`**) со значением `moscow` или `saint_petersburg`.
+      summary: Справочник шоссе
+      parameters:
+      - in: query
+        name: country
+        schema:
+          type: string
+        description: Alias для `region` (поддержка старого параметра).
+      - in: query
+        name: region
+        schema:
+          type: string
+        description: 'Регион справочника: `moscow` или `saint_petersburg`.'
+      tags:
+      - Каталог
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HighwayRef'
+          description: ''
+  /api/v1/accounts/catalog/properties/:
+    get:
+      operationId: v1_accounts_catalog_properties_list
+      description: |-
+        **Назначение:** публичная витрина объявлений о недвижимости. В ответе только карточки со статусом **«Опубликован»** (после одобрения в админке). Черновики и объекты «на модерации» или «отклонён» в этом списке **никогда не отображаются**. Отдельная карточка: `GET .../catalog/properties/{id}/` — то же правило: неопубликованный id даст **404**.
+
+        **Аутентификация:** JWT **не обязателен** для чтения списка. Если передать заголовок **Authorization: Bearer** с access-токеном, в каждом объекте будут актуальные поля **`is_favourite`** и **`is_compare`** для текущего пользователя. В Swagger UI нажмите **Authorize** и вставьте токен, иначе интерфейс может не прикрепить заголовок к запросу.
+
+        **Сортировка:** по дате создания объявления, сначала новые (`-created_at`).
+
+        **Пагинация (drf):** `limit` — размер страницы (по умолчанию из настроек), `offset` — смещение.
+
+        ---
+        **Query-фильтры** (все необязательны; условия объединяются логическим **И**):
+        - **`category`** — числовой **id** категории из справочника `GET .../catalog/categories/`.
+        - **`category_slug`** — то же по **slug** (`new_building`, `land_plot`, `suburban`, …); регистр не важен. Не используйте одновременно с `category`, если нужен один критерий.
+        - **`property_type`** — унаследованный тип объекта для фильтра: `land`, `house`, `apartment`, `commercial`, `other`. Обычно совпадает с категорией, но может отличаться на старых данных.
+        - **`district`** — **id** района из `GET .../catalog/districts/`.
+        - **`highway`** — **id** шоссе из `GET .../catalog/highways/`.
+        - **`area_min`**, **`area_max`** — диапазон площади дома/объекта в **м²** (поле `area` объекта ≥ min и/или ≤ max).
+        - **`land_area_min`**, **`land_area_max`** — диапазон площади участка в **сотках**.
+        - **`distance_to_mkad_max`** — не дальше указанного числа **км** от МКАД: `distance_to_mkad_km ≤ значение` (удобно для загорода).
+        - **`price_min`**, **`price_max`** — цена объекта в **рублях** (включительно по переданным границам).
+        - **`has_asphalt_roads`**, **`has_street_lighting`**, **`has_guarded_territory`**, **`near_shops`**, **`near_school_kindergarten`**, **`near_public_transport`** — булевы признаки инфраструктуры/посёлка; передайте `true` или `false`.
+        - **`promo`**, **`start_sales`**, **`forest_access`**, **`near_railway`** — при **`true`** оставляются только объекты, у которых среди тегов есть строка (без учёта регистра): «Акция», «Старт продаж», «С выходом в Лес», «Ж/д станция рядом» соответственно.
+        - **`actual_offers`** — при **`true`** только объекты с галочкой **«Актуальные предложения»** в админке (карусель на главной).
+
+        Подсказки по тегам для агентов (при сохранении объекта) см. в описании создания объекта.
+      summary: Каталог объявлений (витрина)
+      parameters:
+      - in: query
+        name: actual_offers
+        schema:
+          type: boolean
+        description: '`true` — объект отмечен для блока «Актуальные предложения» на
+          главной.'
+      - in: query
+        name: area_max
+        schema:
+          type: number
+        description: Максимальная площадь дома/объекта, м².
+      - in: query
+        name: area_min
+        schema:
+          type: number
+        description: Минимальная площадь дома/объекта, м².
+      - in: query
+        name: category
+        schema:
+          type: number
+        description: ID категории из GET /catalog/categories/.
+      - in: query
+        name: category_slug
+        schema:
+          type: string
+        description: Тот же выбор категории по slug (`new_building`, `land_plot`,
+          …), регистр не важен.
+      - in: query
+        name: distance_to_mkad_max
+        schema:
+          type: number
+        description: Не дальше N км от МКАД (поле объекта distance_to_mkad_km ≤ N).
+      - in: query
+        name: district
+        schema:
+          type: number
+        description: ID района из GET /catalog/districts/.
+      - in: query
+        name: forest_access
+        schema:
+          type: boolean
+        description: При `true` — только объекты с тегом «С выходом в Лес».
+      - in: query
+        name: has_asphalt_roads
+        schema:
+          type: boolean
+        description: Асфальтированные дороги на территории/посёлке.
+      - in: query
+        name: has_guarded_territory
+        schema:
+          type: boolean
+        description: Охраняемая территория.
+      - in: query
+        name: has_street_lighting
+        schema:
+          type: boolean
+        description: Уличное освещение.
+      - in: query
+        name: highway
+        schema:
+          type: number
+        description: ID шоссе из GET /catalog/highways/.
+      - in: query
+        name: land_area_max
+        schema:
+          type: number
+        description: Максимальная площадь участка, сотки.
+      - in: query
+        name: land_area_min
+        schema:
+          type: number
+        description: Минимальная площадь участка, сотки.
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: near_public_transport
+        schema:
+          type: boolean
+        description: Остановка общественного транспорта рядом.
+      - in: query
+        name: near_railway
+        schema:
+          type: boolean
+        description: При `true` — только объекты с тегом «Ж/д станция рядом».
+      - in: query
+        name: near_school_kindergarten
+        schema:
+          type: boolean
+        description: Школа и детский сад рядом.
+      - in: query
+        name: near_shops
+        schema:
+          type: boolean
+        description: Магазины рядом.
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
+      - in: query
+        name: price_max
+        schema:
+          type: number
+        description: Максимальная цена объекта, ₽.
+      - in: query
+        name: price_min
+        schema:
+          type: number
+        description: Минимальная цена объекта, ₽.
+      - in: query
+        name: promo
+        schema:
+          type: boolean
+        description: При `true` — только объекты с тегом «Акция» (регистр тега не
+          важен).
+      - in: query
+        name: property_type
+        schema:
+          type: string
+          x-spec-enum-id: b7cf1b80aeddc86c
+          title: Тип объекта (legacy)
+          enum:
+          - apartment
+          - commercial
+          - house
+          - land
+          - other
+        description: |-
+          Тип объекта для фильтра: `land`, `house`, `apartment`, `commercial`, `other`.
+
+          * `land` - Земельные участки
+          * `house` - Дом
+          * `apartment` - Квартира
+          * `commercial` - Коммерческая
+          * `other` - Другое
+      - in: query
+        name: start_sales
+        schema:
+          type: boolean
+        description: При `true` — только объекты с тегом «Старт продаж».
+      tags:
+      - Каталог
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPropertyListingList'
+          description: ''
+  /api/v1/accounts/catalog/properties/{listing_pk}/units/:
+    get:
+      operationId: v1_accounts_catalog_properties_units_list
+      description: |-
+        **Назначение:** список лотов/квартир внутри одного объекта ЖК (блок «Планировка и цены» на сайте). Родительский объект определяется **`listing_pk`** в URL (тот же id, что в каталоге).
+
+        **Доступ:** публично, без JWT. Родительское объявление **должно быть опубликовано**; иначе ответ **404** (как для `GET .../catalog/properties/{id}/`). Если объект опубликован, но лотов в базе нет — **200** и пустой список в пагинации.
+
+        **Пагинация:** `limit`, `offset`.
+
+        **Query-фильтры** (опционально, логическое **И**; те же имена, что и у `.../units/summary/`):
+        - **`q`** — текстовый поиск по полям: подпись карточки (`title`), корпус, группа планировки (`layout_label`), отделка (`finishing`). Подстрока, без учёта регистра.
+        - **`building`** — корпус/литер: вхождение подстроки в поле «корпус».
+        - **`layout_label`** — группа аккордеона на фронте (например «Студия», «2-комнатная»): **точное** совпадение строки без учёта регистра.
+        - **`rooms`** — точное число комнат (для студии см. `is_studio`).
+        - **`rooms_min`**, **`rooms_max`** — диапазон по числу комнат.
+        - **`is_studio`** — `true` / `false`: только студии или только не-студии.
+        - **`price_min`**, **`price_max`** — цена лота в **рублях**.
+        - **`area_min`**, **`area_max`** — общая площадь лота **м²** (`total_area`).
+        - **`kitchen_min`**, **`kitchen_max`** — площадь кухни **м²**.
+        - **`floor`** — точный номер этажа.
+        - **`floor_min`**, **`floor_max`** — диапазон этажей.
+        - **`finishing`** — подстрока в описании отделки лота.
+        - **`is_assignment`** — переуступка: `true` / `false`.
+        - **`is_two_level`** — двухуровневая планировка.
+        - **`has_master_bedroom`** — наличие мастер-спальни.
+        - **`is_apartments_legal`** — юридически апартаменты / соответствующий признак в карточке.
+
+        Поле **`price_per_sqm`** в ответе заполняется на сервере при сохранении лота, если заданы цена и площадь.
+      summary: Лоты ЖК («Планировка и цены»)
+      parameters:
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: path
+        name: listing_pk
+        schema:
+          type: integer
+        required: true
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
+      tags:
+      - Каталог
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPropertyListingUnitList'
+          description: ''
+        '404':
+          description: Объект не в каталоге
+  /api/v1/accounts/catalog/properties/{listing_pk}/units/summary/:
+    get:
+      operationId: v1_accounts_catalog_properties_units_summary_list
+      description: |-
+        **Назначение:** агрегированная сводка по лотам одного опубликованного объекта, сгруппированная по полю **`layout_label`** (одна строка аккордеона на сайте — например «1-комнатная»). Для каждой группы возвращаются: **`count`** (число лотов), **`area_min`** / **`area_max`** (по общей площади), **`price_min`** / **`price_max`** (цена), **`price_per_sqm_min`** (минимальная цена за м² среди лотов группы).
+
+        **Доступ и родитель** — как у `GET .../units/`: только **опубликованный** `listing_pk`, иначе **404**.
+
+        **Фильтры:** те же query-параметры, что у списка лотов. Сводка считается **после** применения фильтров (т.е. отражает только отобранное множество лотов).
+
+        Лоты с пустым `layout_label` попадают в одну группу с пустой меткой.
+      summary: Сводка лотов по группам планировки
+      parameters:
+      - in: path
+        name: listing_pk
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Каталог
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PropertyListingUnitSummaryRow'
+          description: ''
+        '404':
+          description: Объект не в каталоге
+  /api/v1/accounts/catalog/properties/{id}/:
+    get:
+      operationId: v1_accounts_catalog_properties_retrieve
+      description: |-
+        **Назначение:** одна карточка недвижимости для публичного сайта по числовому **id**.
+
+        **Доступ:** публично; JWT **не обязателен**. Если передать Bearer-токен, в теле будут **`is_favourite`** и **`is_compare`** для текущего пользователя (как в списке каталога).
+
+        **Статус:** только **«Опубликован»**. Объект на модерации, отклонённый или удалённый — **404**, чтобы нельзя было увидеть черновик по прямой ссылке.
+
+        Структура ответа совпадает с элементом списка `GET .../catalog/properties/`: изображения, теги, район, категория, блоки `residential_details` / `land_plot_details` при наличии.
+      summary: Карточка объекта на витрине
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Каталог
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyListing'
+          description: ''
+        '404':
+          description: Нет в каталоге (не опубликован или не существует)
+  /api/v1/accounts/change-password/:
+    post:
+      operationId: v1_accounts_change_password_create
+      description: |-
+        **Назначение:** установить новый пароль для **вошедшего** пользователя без ввода старого пароля (сценарий «восстановление/смена из кабинета» при доверенной сессии).
+
+        **Авторизация:** Bearer JWT.
+
+        **Тело:** JSON или form — **`new_password`**, **`new_password_confirm`** (должны совпадать). Действуют стандартные **валидаторы паролей Django** (длина, сложность и т.д.).
+
+        После успеха используйте новый пароль при следующем **логине**.
+      summary: Смена пароля
+      tags:
+      - Accounts — профиль
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: Пароль обновлён; дальнейшие запросы — с новым паролем при логине.
+  /api/v1/accounts/login/:
+    post:
+      operationId: v1_accounts_login_create
+      description: |-
+        **Назначение:** получить пару **access** / **refresh** JWT для вызовов защищённых методов API (кабинет агента, избранное, сравнение).
+
+        **Тело JSON:** `username` (как при выдаче кабинета), `password`, `personal_data_consent`: **true** (единоразовое подтверждение политики при входе).
+
+        **Условие:** у пользователя в админке должен быть флаг **«Подтверждён администратором»** (`is_verified`); иначе вход будет отклонён.
+
+        **Ответ:** короткоживущий **access** (заголовок `Authorization: Bearer ...`) и **refresh** для продления сессии через `POST .../token/refresh/`; при необходимости дополнительные поля профиля — см. схему ответа сериализатора.
+      summary: Вход агента (JWT)
+      tags:
+      - Accounts — авторизация
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentTokenObtainRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AgentTokenObtainRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AgentTokenObtainRequest'
+          '*/*':
+            schema:
+              $ref: '#/components/schemas/AgentTokenObtainRequest'
+        required: true
+      responses:
+        '200':
+          description: No response body
+  /api/v1/accounts/notifications/listing-rejections/:
+    get:
+      operationId: v1_accounts_notifications_listing_rejections_list
+      description: 'Уведомления для **текущего агента** по его объектам, отклонённым
+        модератором. Сортировка: **сначала новые** (`created_at` по убыванию). Поле
+        **`is_seen`** — просмотрел ли агент запись; при открытии **GET …/{id}/** становится
+        `true`.'
+      summary: Список уведомлений об отклонении объектов
+      parameters:
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
+      tags:
+      - Accounts — уведомления
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPropertyListingRejectionNoticeList'
+          description: ''
+  /api/v1/accounts/notifications/listing-rejections/{id}/:
+    get:
+      operationId: v1_accounts_notifications_listing_rejections_retrieve
+      description: Одна запись уведомления, только если объект принадлежит агенту
+        из JWT. После успешного ответа **`is_seen`** устанавливается в **`true`**,
+        **`seen_at`** — текущее время.
+      summary: Уведомление об отклонении по id
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Accounts — уведомления
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyListingRejectionNotice'
+          description: ''
+  /api/v1/accounts/profile/:
+    get:
+      operationId: v1_accounts_profile_retrieve
+      description: |-
+        **GET:** текущие данные профиля агента и учётной записи.
+
+        **Авторизация:** Bearer JWT.
+
+        В ответе: контактные **full_name**, **phone**, текст **description**, а также **email**, **username**, флаг **is_verified** (подтверждение админом). Структура соответствует `AgentProfileSerializer`.
+      summary: Профиль агента
+      tags:
+      - Accounts — профиль
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentProfile'
+          description: ''
+    put:
+      operationId: v1_accounts_profile_update
+      description: '**PUT:** передать полный набор полей профиля (**full_name**, **phone**,
+        **description**, при необходимости **email**). Email синхронизируется с моделью
+        пользователя и должен оставаться уникальным.'
+      summary: Полное обновление профиля
+      tags:
+      - Accounts — профиль
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentProfileUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AgentProfileUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AgentProfileUpdateRequest'
+          '*/*':
+            schema:
+              $ref: '#/components/schemas/AgentProfileUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentProfile'
+          description: ''
+    patch:
+      operationId: v1_accounts_profile_partial_update
+      description: '**PATCH:** только изменившиеся поля (`full_name`, `phone`, `description`,
+        `email`). Остальные значения не сбрасываются.'
+      summary: Частичное обновление профиля
+      tags:
+      - Accounts — профиль
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAgentProfileUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAgentProfileUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAgentProfileUpdateRequest'
+          '*/*':
+            schema:
+              $ref: '#/components/schemas/PatchedAgentProfileUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentProfile'
+          description: ''
+  /api/v1/accounts/profile/compare/:
+    get:
+      operationId: v1_accounts_profile_compare_list
+      description: |-
+        **GET** — текущая корзина сравнения в порядке сохранённых позиций.
+
+        **Сравнение** — до **10** опубликованных объявлений на пользователя. При попытке добавить сверх лимита — **HTTP 400** с текстом причины. Повторное добавление того же id не дублирует запись (идемпотентно возвращается текущая карточка).
+
+        Обязателен **JWT**. Формат карточек такой же, как в каталоге.
+      summary: 'Сравнение: список объектов'
+      tags:
+      - Accounts — витрина (пользователь)
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PropertyListing'
+          description: ''
+  /api/v1/accounts/profile/compare/{listing_id}/:
+    delete:
+      operationId: v1_accounts_profile_compare_destroy
+      description: |-
+        **DELETE**: **`listing_id`** в пути — id объекта **`PropertyListing`**.
+
+        **204** если запись сравнения удалена; **404** если объекта не было в списке.
+      summary: 'Сравнение: убрать объект'
+      parameters:
+      - in: path
+        name: listing_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Accounts — витрина (пользователь)
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: Удалено
+        '404':
+          description: Не было в списке
+  /api/v1/accounts/profile/compare/add/:
+    post:
+      operationId: v1_accounts_profile_compare_add_create
+      description: |-
+        **POST** с `{"property_listing": <id>}`. Учитывается лимит корзины; при успехе возвращается полная карточка.
+
+        **Сравнение** — до **10** опубликованных объявлений на пользователя. При попытке добавить сверх лимита — **HTTP 400** с текстом причины. Повторное добавление того же id не дублирует запись (идемпотентно возвращается текущая карточка).
+
+        Обязателен **JWT**. Формат карточек такой же, как в каталоге.
+      summary: 'Сравнение: добавить объект'
+      tags:
+      - Accounts — витрина (пользователь)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ListingIdWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ListingIdWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ListingIdWriteRequest'
+          '*/*':
+            schema:
+              $ref: '#/components/schemas/ListingIdWriteRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyListing'
+          description: ''
+        '400':
+          description: Лимит сравнения превышен
+  /api/v1/accounts/profile/favorites/:
+    get:
+      operationId: v1_accounts_profile_favorites_list
+      description: |-
+        **GET** — массив объектов в избранном.
+
+        **Избранное** привязано к учётной записи агента. Обязателен **JWT**.
+
+        В списке и при добавлении возвращаются **полные карточки** как в каталоге (`PropertyListingSerializer`: фото, теги, район, цена и т.д.). В избранное **можно добавить только опубликованный** объект; неопубликованный id даст ошибку при получении полной карточки из витрины.
+
+        Порядок элементов в **GET** — от новых добавлений к старым.
+      summary: 'Избранное: список объектов'
+      tags:
+      - Accounts — витрина (пользователь)
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PropertyListing'
+          description: ''
+  /api/v1/accounts/profile/favorites/{listing_id}/:
+    delete:
+      operationId: v1_accounts_profile_favorites_destroy
+      description: |-
+        **DELETE** по пути с **`listing_id` в URL** — это **первичный ключ объекта** `PropertyListing`, а не внутренний id записи избранного.
+
+        **204** — удалено; **404** — такой объект не был в избранном.
+      summary: 'Избранное: убрать объект'
+      parameters:
+      - in: path
+        name: listing_id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Accounts — витрина (пользователь)
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: Удалено
+        '404':
+          description: Не было в избранном
+  /api/v1/accounts/profile/favorites/add/:
+    post:
+      operationId: v1_accounts_profile_favorites_add_create
+      description: |-
+        **POST** с телом `{"property_listing": <id>}`. Создаёт связь пользователь–объект; если уже в избранном — **200** и актуальная карточка, если новая — **201**.
+
+        **Избранное** привязано к учётной записи агента. Обязателен **JWT**.
+
+        В списке и при добавлении возвращаются **полные карточки** как в каталоге (`PropertyListingSerializer`: фото, теги, район, цена и т.д.). В избранное **можно добавить только опубликованный** объект; неопубликованный id даст ошибку при получении полной карточки из витрины.
+
+        Порядок элементов в **GET** — от новых добавлений к старым.
+      summary: 'Избранное: добавить объект'
+      tags:
+      - Accounts — витрина (пользователь)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ListingIdWriteRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ListingIdWriteRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ListingIdWriteRequest'
+          '*/*':
+            schema:
+              $ref: '#/components/schemas/ListingIdWriteRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyListing'
+          description: ''
+  /api/v1/accounts/properties/:
+    get:
+      operationId: v1_accounts_properties_list
+      description: |-
+        **Назначение:** список объявлений **текущего агента** (владелец = пользователь из JWT).
+
+        **Авторизация:** обязателен **Bearer access-токен** (роль агента с флагом подтверждения в админке).
+
+        **Статусы:** здесь видны **все** ваши карточки — «на модерации», «опубликован», «отклонён» — в отличие от публичного каталога, где только опубликованные.
+
+        **Query-фильтры личного списка** (`GET`, только свои объекты агента):
+        - **`status`** — `moderation` (на модерации), `published` (опубликован), `rejected` (отклонён). Без параметра возвращаются объекты **всех** статусов.
+        - **`category`** — фильтр по **id** категории витрины (`category_id`), как в справочнике категорий.
+        - **`category_slug`** — фильтр по **slug** категории (точное совпадение без учёта регистра).
+        - **`actual_offers`** — `true` / `false`: только объекты с флагом «Актуальные предложения» или без него.
+
+        Пагинация: **`limit`**, **`offset`**.
+
+        **Публичная витрина** (объекты всех агентов, только опубликованные): `GET .../catalog/properties/`, `GET .../properties/published/`; карточка: `GET .../catalog/properties/{id}/` или `GET .../properties/published/{id}/`.
+      summary: Список моих объектов
+      parameters:
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
+      tags:
+      - Accounts — объекты
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPropertyListingList'
+          description: ''
+    post:
+      operationId: v1_accounts_properties_create
+      description: |-
+        **Назначение:** создание новой карточки недвижимости от имени вошедшего агента. После успешного сохранения объект обычно получает статус **«На модерации»** до проверки администратором.
+
+        **Рекомендуется `multipart/form-data`:** удобно прикреплять файлы. Также поддерживается `application/json` (без загрузки файлов или с URL вне этого API).
+
+        - Текстовые поля как в форме на сайте.
+        - **images** — одно или несколько полей с именем `images` (несколько файлов).
+        - **tags** — массив **строк**, как **images**: в Swagger «Add string item» / повтор поля `tags` в form-data; формат JSON в теле: `["тег1","тег2"]` или `[{"tag_name":"имя"}]`. Переданный набор задаёт **текущие** теги объекта (полная замена из этого запроса для поля `tags`). Отдельно только теги: `PUT /properties/{id}/tags/`.
+
+        Для попадания в фильтры публичного каталога (`GET .../catalog/properties/`) добавьте в `tags` **точно такие** строки (как в справочнике на backend; при поиске регистр не важен):
+        - `Акция` — фильтр `promo=true`
+        - `Старт продаж` — `start_sales=true`
+        - `С выходом в Лес` — `forest_access=true`
+        - `Ж/д станция рядом` — `near_railway=true`
+        Любые другие имена тегов тоже можно передавать — они просто не привязаны к этим query-параметрам.
+
+        - **category_id** — обязательно при создании; список: `GET .../catalog/categories/`. Вложенные объекты (JSON или строка JSON в `multipart`): **`residential_details`** (все категории кроме земли) и **`land_plot_details`** (только slug `land_plot`). При **PATCH** переданные поля внутри блока дополняют уже сохранённые.
+        - **district_id**, **highway_id** — из публичных справочников `GET .../catalog/districts/` и `.../catalog/highways/`; **address** — только вручную (улица, дом).
+        - **area** — площадь дома/объекта, м²; **land_area** — участок, сот.; **distance_to_mkad_km** — до МКАД, км; **lat**, **long** — широта и долгота для карты (WGS84; в БД хранятся как latitude / longitude).
+        - Флаги посёлка/локации: `has_asphalt_roads`, `has_street_lighting`, `has_guarded_territory`, `near_shops`, `near_school_kindergarten`, `near_public_transport` (boolean).
+        - Коммуникации по отдельности: `electricity_supply`, `water_supply`, `sewage_type`, `heating_type`, `internet_connection`; поле **communications** — краткое резюме строкой.
+        - **property_type:** по возможности не передавайте — выставляется от **category_id**; иначе legacy: `land` | `house` | `apartment` | `commercial` | `other`.
+      summary: Создать объект (отправка на модерацию)
+      tags:
+      - Accounts — объекты
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PropertyListingWriteRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertyListingWriteRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyListing'
+          description: ''
+  /api/v1/accounts/properties/{id}/:
+    get:
+      operationId: v1_accounts_properties_retrieve
+      description: |-
+        **Назначение:** получить одну карточку по **id** в контексте личного кабинета.
+
+        **Доступ:** только **владелец** (агент-владелец записи); иначе **403/404**. JWT обязателен.
+
+        В ответе полная структура как в каталоге: фото, теги, уникальный код объекта (формат RL- и четыре цифры), детали категории, плюс актуальный **status** и **rejection_reason** при отклонении.
+      summary: Карточка объекта
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Accounts — объекты
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyListing'
+          description: ''
+    put:
+      operationId: v1_accounts_properties_update
+      description: |-
+        **PUT:** заменить карточку целиком — передайте все обязательные и нужные поля модели записи. Удобно при формах «сохранить всё».
+
+        То же тело, что и при создании: **multipart/form-data** или JSON. При **PUT** нужно передать полный набор полей; при **PATCH** — только изменённые. Если передать `images` (включая пустой список), старые фото заменяются; без поля `images` файлы не трогаются.
+
+        Для попадания в фильтры публичного каталога (`GET .../catalog/properties/`) добавьте в `tags` **точно такие** строки (как в справочнике на backend; при поиске регистр не важен):
+        - `Акция` — фильтр `promo=true`
+        - `Старт продаж` — `start_sales=true`
+        - `С выходом в Лес` — `forest_access=true`
+        - `Ж/д станция рядом` — `near_railway=true`
+        Любые другие имена тегов тоже можно передавать — они просто не привязаны к этим query-параметрам.
+      summary: Полное обновление объекта
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Accounts — объекты
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PropertyListingUpdateRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertyListingUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyListing'
+          description: ''
+    patch:
+      operationId: v1_accounts_properties_partial_update
+      description: |-
+        **PATCH:** обновить только изменившиеся поля (и вложенные блоки `residential_details` / `land_plot_details` частично). Остальные значения на сервере сохраняются.
+
+        То же тело, что и при создании: **multipart/form-data** или JSON. При **PUT** нужно передать полный набор полей; при **PATCH** — только изменённые. Если передать `images` (включая пустой список), старые фото заменяются; без поля `images` файлы не трогаются.
+
+        Для попадания в фильтры публичного каталога (`GET .../catalog/properties/`) добавьте в `tags` **точно такие** строки (как в справочнике на backend; при поиске регистр не важен):
+        - `Акция` — фильтр `promo=true`
+        - `Старт продаж` — `start_sales=true`
+        - `С выходом в Лес` — `forest_access=true`
+        - `Ж/д станция рядом` — `near_railway=true`
+        Любые другие имена тегов тоже можно передавать — они просто не привязаны к этим query-параметрам.
+      summary: Частичное обновление объекта
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Accounts — объекты
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPropertyListingUpdateRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPropertyListingUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyListing'
+          description: ''
+    delete:
+      operationId: v1_accounts_properties_destroy
+      description: '**DELETE:** полное удаление объявления из базы. Связанные **изображения**
+        и файлы с диска удаляются каскадно (в пределах модели). Операция **необратима**.
+        Доступ только владельцу.'
+      summary: Удалить объект
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Accounts — объекты
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: Удалено
+  /api/v1/accounts/properties/{id}/resubmit/:
+    post:
+      operationId: v1_accounts_properties_resubmit_create
+      description: |-
+        **POST** без тела. Владелец может вызвать после **отклонения** админом.
+
+        Статус снова **«На модерации»**, поле **`rejection_reason`** очищается. Дальнейшее решение — в админке (повторная публикация или снова отклонение).
+      summary: Повторно отправить на модерацию
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Accounts — объекты
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertyListingRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PropertyListingRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PropertyListingRequest'
+          '*/*':
+            schema:
+              $ref: '#/components/schemas/PropertyListingRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyListing'
+          description: ''
+  /api/v1/accounts/properties/{id}/tags/:
+    put:
+      operationId: v1_accounts_properties_tags_update
+      description: |-
+        **Назначение:** быстро обновить только маркетинговые **теги** (чипы на витрине) без остальных полей карточки.
+
+        **Метод:** `PUT`. Тело JSON: `{"tags": ["лес", "дача"]}` или `multipart/form-data` с повторяющимся полем **`tags`**. Список имён задаёт **итоговый** набор: прежние теги объекта удаляются, создаются новые записи (в ответе у элементов будут **новые** `id`).
+
+        **`{"tags": []}`** — удалить все теги у объекта.
+
+        **Ответ:** массив `[{ "id", "tag_name" }, …]` в актуальном порядке. Некоторые имена тегов участвуют в фильтрах каталога (`promo`, `start_sales` и т.д.) — см. описание каталога.
+      summary: Заменить все теги объекта
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Accounts — объекты
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertyTagsReplaceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PropertyTagsReplaceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PropertyTagsReplaceRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          description: Массив тегов [{id, tag_name}, ...]
+  /api/v1/accounts/properties/{id}/units/:
+    get:
+      operationId: v1_accounts_properties_units_list
+      description: |-
+        **Назначение:** список лотов/квартир внутри одного объекта агента.
+
+        **Доступ:** только владелец объекта (JWT обязателен).
+      summary: Лоты моего объекта (ЖК)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
+      tags:
+      - Accounts — лоты (units)
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPropertyListingUnitList'
+          description: ''
+    post:
+      operationId: v1_accounts_properties_units_create
+      description: |-
+        **Назначение:** добавить лот/квартиру в блок «Планировка и цены» для одного объекта.
+
+        **Доступ:** только владелец объекта (JWT обязателен).
+      summary: Создать лот в моём объекте (ЖК)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Accounts — лоты (units)
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PropertyListingUnitRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertyListingUnitRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyListingUnit'
+          description: ''
+  /api/v1/accounts/properties/{id}/units/{unit_pk}/:
+    get:
+      operationId: v1_accounts_properties_units_retrieve
+      summary: Лот моего объекта (детали)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: unit_pk
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Accounts — лоты (units)
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyListingUnit'
+          description: ''
+    put:
+      operationId: v1_accounts_properties_units_update
+      summary: Полное обновление лота
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: unit_pk
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Accounts — лоты (units)
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PropertyListingUnitRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertyListingUnitRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyListingUnit'
+          description: ''
+    patch:
+      operationId: v1_accounts_properties_units_partial_update
+      summary: Частичное обновление лота
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: unit_pk
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Accounts — лоты (units)
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedPropertyListingUnitRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedPropertyListingUnitRequest'
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyListingUnit'
+          description: ''
+    delete:
+      operationId: v1_accounts_properties_units_destroy
+      summary: Удалить лот
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      - in: path
+        name: unit_pk
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Accounts — лоты (units)
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '204':
+          description: Удалено
+  /api/v1/accounts/properties/{id}/unpublish/:
+    post:
+      operationId: v1_accounts_properties_unpublish_create
+      description: |-
+        **POST** без тела. Только **владелец** объекта.
+
+        Статус карточки переводится в **«На модерации»**; объект исчезает с публичной витрины (каталог и публичные детали вернут **404** по id). Используется как «снять с публикации» без удаления данных.
+      summary: Снять объект с публикации
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Accounts — объекты
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertyListingRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PropertyListingRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PropertyListingRequest'
+          '*/*':
+            schema:
+              $ref: '#/components/schemas/PropertyListingRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyListing'
+          description: ''
+  /api/v1/accounts/properties/published/:
+    get:
+      operationId: v1_accounts_properties_published_list
+      description: |-
+        **Алиас витрины** под префиксом `/properties/published/`.
+
+        Полностью совпадает с **`GET .../catalog/properties/`**: те же поля, **те же query-фильтры** (см. описание каталога и подсказки к параметрам в Swagger), пагинация `limit`/`offset`, сортировка по дате создания. В выборку попадают объекты **всех** агентов только со статусом **«Опубликован»**.
+
+        **Зачем отдельный путь:** удобно вызывать из кода кабинета рядом с `GET .../properties/` (список **своих** объявлений с любым статусом), не смешивая URL витрины и ЛК.
+
+        JWT опционален; с токеном — поля **`is_favourite`** и **`is_compare`**.
+      summary: Все опубликованные объявления (витрина)
+      parameters:
+      - in: query
+        name: actual_offers
+        schema:
+          type: boolean
+        description: '`true` — объект отмечен для блока «Актуальные предложения» на
+          главной.'
+      - in: query
+        name: area_max
+        schema:
+          type: number
+        description: Максимальная площадь дома/объекта, м².
+      - in: query
+        name: area_min
+        schema:
+          type: number
+        description: Минимальная площадь дома/объекта, м².
+      - in: query
+        name: category
+        schema:
+          type: number
+        description: ID категории из GET /catalog/categories/.
+      - in: query
+        name: category_slug
+        schema:
+          type: string
+        description: Тот же выбор категории по slug (`new_building`, `land_plot`,
+          …), регистр не важен.
+      - in: query
+        name: distance_to_mkad_max
+        schema:
+          type: number
+        description: Не дальше N км от МКАД (поле объекта distance_to_mkad_km ≤ N).
+      - in: query
+        name: district
+        schema:
+          type: number
+        description: ID района из GET /catalog/districts/.
+      - in: query
+        name: forest_access
+        schema:
+          type: boolean
+        description: При `true` — только объекты с тегом «С выходом в Лес».
+      - in: query
+        name: has_asphalt_roads
+        schema:
+          type: boolean
+        description: Асфальтированные дороги на территории/посёлке.
+      - in: query
+        name: has_guarded_territory
+        schema:
+          type: boolean
+        description: Охраняемая территория.
+      - in: query
+        name: has_street_lighting
+        schema:
+          type: boolean
+        description: Уличное освещение.
+      - in: query
+        name: highway
+        schema:
+          type: number
+        description: ID шоссе из GET /catalog/highways/.
+      - in: query
+        name: land_area_max
+        schema:
+          type: number
+        description: Максимальная площадь участка, сотки.
+      - in: query
+        name: land_area_min
+        schema:
+          type: number
+        description: Минимальная площадь участка, сотки.
+      - name: limit
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: near_public_transport
+        schema:
+          type: boolean
+        description: Остановка общественного транспорта рядом.
+      - in: query
+        name: near_railway
+        schema:
+          type: boolean
+        description: При `true` — только объекты с тегом «Ж/д станция рядом».
+      - in: query
+        name: near_school_kindergarten
+        schema:
+          type: boolean
+        description: Школа и детский сад рядом.
+      - in: query
+        name: near_shops
+        schema:
+          type: boolean
+        description: Магазины рядом.
+      - name: offset
+        required: false
+        in: query
+        description: The initial index from which to return the results.
+        schema:
+          type: integer
+      - in: query
+        name: price_max
+        schema:
+          type: number
+        description: Максимальная цена объекта, ₽.
+      - in: query
+        name: price_min
+        schema:
+          type: number
+        description: Минимальная цена объекта, ₽.
+      - in: query
+        name: promo
+        schema:
+          type: boolean
+        description: При `true` — только объекты с тегом «Акция» (регистр тега не
+          важен).
+      - in: query
+        name: property_type
+        schema:
+          type: string
+          x-spec-enum-id: b7cf1b80aeddc86c
+          title: Тип объекта (legacy)
+          enum:
+          - apartment
+          - commercial
+          - house
+          - land
+          - other
+        description: |-
+          Тип объекта для фильтра: `land`, `house`, `apartment`, `commercial`, `other`.
+
+          * `land` - Земельные участки
+          * `house` - Дом
+          * `apartment` - Квартира
+          * `commercial` - Коммерческая
+          * `other` - Другое
+      - in: query
+        name: start_sales
+        schema:
+          type: boolean
+        description: При `true` — только объекты с тегом «Старт продаж».
+      tags:
+      - Accounts — объекты
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedPropertyListingList'
+          description: ''
+  /api/v1/accounts/properties/published/{id}/:
+    get:
+      operationId: v1_accounts_properties_published_retrieve
+      description: |-
+        **Алиас карточки витрины:** `GET .../properties/published/{id}/`.
+
+        Логика как у **`GET .../catalog/properties/{id}/`**: только статус **«Опубликован»**, иначе **404**. Опциональный JWT даёт **`is_favourite`** / **`is_compare`**.
+
+        **Не путать** с **`GET .../properties/{id}/`** (кабинет агента): там доступ **только владельцу** и допускаются любые статусы (модерация, отклонён и т.д.).
+      summary: Карточка опубликованного объекта (витрина)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Accounts — объекты
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyListing'
+          description: ''
+        '404':
+          description: Нет в каталоге
+  /api/v1/accounts/register/:
+    post:
+      operationId: v1_accounts_register_create
+      description: |-
+        **Назначение:** приём заявки от потенциального агента с публичной формы («стать партнёром» / регистрация).
+
+        **Доступ:** без токена. Тело **JSON**: имя, телефон, флаг согласия на обработку персональных данных (`personal_data_consent`, должен быть `true` при действующей политике).
+
+        **Побочный эффект:** в таблице заявок создаётся одна запись; **учётная запись пользователя не создаётся** автоматически. После проверки менеджер в **админке Django** создаёт пользователя агента и выдаёт логин/пароль.
+
+        **Ответ:** HTTP 201, поля `id` заявки и человекочитаемое сообщение для экрана успеха.
+      summary: Регистрация / заявка (форма у экрана входа)
+      tags:
+      - Accounts — авторизация
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentRequestCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AgentRequestCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AgentRequestCreateRequest'
+          '*/*':
+            schema:
+              $ref: '#/components/schemas/AgentRequestCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '201':
+          description: Заявка принята; в ответе id и текст для пользователя.
+  /api/v1/accounts/token/refresh/:
+    post:
+      operationId: v1_accounts_token_refresh_create
+      description: |-
+        **Назначение:** получить новый **access**-токен без повторного ввода пароля, пока действителен **refresh**.
+
+        **Тело JSON:** объект с полем **`refresh`** — строка refresh-токена, выданная при логине.
+
+        **Ответ:** новый **access** (и при настройках SimpleJWT может вращаться refresh — см. фактический JSON). Используйте новый access в заголовке `Authorization: Bearer ...` для всех последующих запросов.
+      summary: Обновить access-токен
+      tags:
+      - Accounts — авторизация
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          '*/*':
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /api/v1/site/advantages/:
+    get:
+      operationId: v1_site_advantages_list
+      description: |-
+        **Доступ:** публично, **без JWT**. Все тексты, изображения и порядок записей настраиваются в **админ-панели Django** (приложение сайта). Неактивные записи (`is_active=False` и аналоги) в выдачу не попадают там, где это предусмотрено моделью.
+
+        **Назначение:** карточки преимуществ компании (иконка, заголовок, краткий текст).
+      summary: Преимущества («Почему мы»)
+      tags:
+      - Сайт — преимущества
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdvantageCard'
+          description: ''
+  /api/v1/site/articles/:
+    get:
+      operationId: v1_site_articles_list
+      description: |-
+        **Доступ:** публично, **без JWT**. Все тексты, изображения и порядок записей настраиваются в **админ-панели Django** (приложение сайта). Неактивные записи (`is_active=False` и аналоги) в выдачу не попадают там, где это предусмотрено моделью.
+
+        **Назначение:** анонсы опубликованных статей (без длинного `body`; полный контент — в детали по **slug**).
+      summary: Статьи блога (список)
+      tags:
+      - Сайт — блог
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ArticleList'
+          description: ''
+  /api/v1/site/articles/{slug}/:
+    get:
+      operationId: v1_site_articles_retrieve
+      description: |-
+        **Доступ:** публично, **без JWT**. Все тексты, изображения и порядок записей настраиваются в **админ-панели Django** (приложение сайта). Неактивные записи (`is_active=False` и аналоги) в выдачу не попадают там, где это предусмотрено моделью.
+
+        **Назначение:** одна статья по **slug** URL; основной контент в **`sections`** (блоки со списками); поле **`body`** может использоваться для старых записей.
+      summary: Статья блога (деталь по slug)
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - Сайт — блог
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArticleDetail'
+          description: ''
+  /api/v1/site/consultation/:
+    post:
+      operationId: v1_site_consultation_create
+      description: |-
+        **Доступ:** публично, **без JWT**. Все тексты, изображения и порядок записей настраиваются в **админ-панели Django** (приложение сайта). Неактивные записи (`is_active=False` и аналоги) в выдачу не попадают там, где это предусмотрено моделью.
+
+        **Назначение:** форма обратной связи с лендинга; создаётся запись **ConsultationLead** для менеджеров.
+
+        **Обязательно:** согласие на обработку персональных данных (**`personal_data_consent` = true**). Имя, телефон, email и сообщение — по схеме сериализатора.
+
+        **Ответ:** **201**, `id` заявки и короткий текст успеха.
+      summary: Заявка «Получить консультацию»
+      tags:
+      - Сайт — консультации
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsultationLeadCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ConsultationLeadCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ConsultationLeadCreateRequest'
+          '*/*':
+            schema:
+              $ref: '#/components/schemas/ConsultationLeadCreateRequest'
+        required: true
+      security:
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultationLeadCreated'
+          description: ''
+  /api/v1/site/contacts/:
+    get:
+      operationId: v1_site_contacts_retrieve
+      description: |-
+        **Доступ:** публично, **без JWT**. Все тексты, изображения и порядок записей настраиваются в **админ-панели Django** (приложение сайта). Неактивные записи (`is_active=False` и аналоги) в выдачу не попадают там, где это предусмотрено моделью.
+
+        **Назначение:** единая карточка контактов (телефон, email, адрес, соцсети, часы работы). В базе хранится одна активная запись; если не создана — **404**.
+      summary: Контакты компании
+      tags:
+      - Сайт — контакты
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteContacts'
+          description: ''
+        '404':
+          description: Запись контактов ещё не создана
+  /api/v1/site/faq/:
+    get:
+      operationId: v1_site_faq_list
+      description: |-
+        **Доступ:** публично, **без JWT**. Все тексты, изображения и порядок записей настраиваются в **админ-панели Django** (приложение сайта). Неактивные записи (`is_active=False` и аналоги) в выдачу не попадают там, где это предусмотрено моделью.
+
+        **Назначение:** пары вопрос–ответ для блока FAQ (порядок как в админке).
+      summary: FAQ (вопрос — ответ)
+      tags:
+      - Сайт — FAQ
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FAQEntry'
+          description: ''
+  /api/v1/site/geo/:
+    get:
+      operationId: v1_site_geo_retrieve
+      description: |-
+        **Доступ:** публично, **без JWT**. Все тексты, изображения и порядок записей настраиваются в **админ-панели Django** (приложение сайта). Неактивные записи (`is_active=False` и аналоги) в выдачу не попадают там, где это предусмотрено моделью.
+
+        **Назначение:** подставить человекочитаемое название места для виджета «ваш регион».
+
+        - **Пара `lat` + `lon`:** обратное геокодирование через **OpenStreetMap Nominatim**; в ответе `place_name`, `full_address`, `country_code`. Требуется исходящий интернет с сервера.
+        - **Без координат:** демонстрационный режим — координаты генерируются от IP, подпись города фиктивная (РФ).
+
+        Справочник **`SiteRegion`** этим методом **не читается** — только внешняя геослужба или демо.
+      summary: 'Геолокация: название места по координатам или демо по IP'
+      parameters:
+      - in: query
+        name: lat
+        schema:
+          type: number
+          format: double
+        description: Широта WGS84 (вместе с `lon`).
+      - in: query
+        name: lon
+        schema:
+          type: number
+          format: double
+        description: Долгота WGS84 (вместе с `lat`).
+      tags:
+      - Сайт — регионы
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteGeoDetect'
+          description: ''
+        '400':
+          description: Некорректные lat/lon
+  /api/v1/site/hero-slides/:
+    get:
+      operationId: v1_site_hero_slides_list
+      description: |-
+        **Доступ:** публично, **без JWT**. Все тексты, изображения и порядок записей настраиваются в **админ-панели Django** (приложение сайта). Неактивные записи (`is_active=False` и аналоги) в выдачу не попадают там, где это предусмотрено моделью.
+
+        **Назначение:** элементы карусели / hero-блока на главной (изображение, заголовок, ссылка и т.д.).
+
+        **Фильтр (опционально):** `site_region` (ID) или `site_region_slug` (slug) — оставить слайды для конкретного региона. Если нужно добавить «общие» слайды (где регион не задан) — передайте `include_global=1`.
+        Если переданы оба (`site_region` и `site_region_slug`) — приоритет у `site_region`.
+      summary: Слайды / баннеры главной
+      parameters:
+      - in: query
+        name: include_global
+        schema:
+          type: integer
+        description: Если `1`, то вместе с региональными вернуть и «общие» слайды
+          (где `site_region` не задан).
+      - in: query
+        name: site_region
+        schema:
+          type: integer
+        description: ID региона (`SiteRegion.id`).
+      - in: query
+        name: site_region_slug
+        schema:
+          type: string
+        description: Slug региона (`SiteRegion.slug`). По умолчанию возвращаются только
+          слайды этого региона.
+      tags:
+      - Сайт — баннеры
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HeroSlide'
+          description: ''
+  /api/v1/site/regions/:
+    get:
+      operationId: v1_site_regions_list
+      description: |-
+        **Доступ:** публично, **без JWT**. Все тексты, изображения и порядок записей настраиваются в **админ-панели Django** (приложение сайта). Неактивные записи (`is_active=False` и аналоги) в выдачу не попадают там, где это предусмотрено моделью.
+
+        **Назначение:** регионы/города для переключателя в шапке лендинга.
+
+        **Query-параметры (опционально):** **`name`** или **`search`** — одно и то же: оставить только регионы, в названии которых встречается подстрока (**без учёта регистра**). Если переданы оба, используется **`name`**.
+      summary: Регионы / города (шапка сайта)
+      parameters:
+      - in: query
+        name: name
+        schema:
+          type: string
+        description: Подстрока для поиска в названии города/региона (регистр не важен).
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Синоним `name`; при одновременной передаче приоритет у параметра
+          `name`.
+      tags:
+      - Сайт — регионы
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SiteRegion'
+          description: ''
+  /api/v1/site/reviews/:
+    get:
+      operationId: v1_site_reviews_list
+      description: |-
+        **Доступ:** публично, **без JWT**. Все тексты, изображения и порядок записей настраиваются в **админ-панели Django** (приложение сайта). Неактивные записи (`is_active=False` и аналоги) в выдачу не попадают там, где это предусмотрено моделью.
+
+        **Назначение:** опубликованные отзывы для страницы «Отзывы» (автор, текст, рейтинг при наличии в модели).
+      summary: Отзывы клиентов
+      tags:
+      - Сайт — отзывы
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClientReview'
+          description: ''
+  /api/v1/site/services/:
+    get:
+      operationId: v1_site_services_list
+      description: |-
+        **Доступ:** публично, **без JWT**. Все тексты, изображения и порядок записей настраиваются в **админ-панели Django** (приложение сайта). Неактивные записи (`is_active=False` и аналоги) в выдачу не попадают там, где это предусмотрено моделью.
+
+        **Назначение:** краткий список услуг для блока на главной (без полного лендинга услуги).
+      summary: Дополнительные услуги
+      tags:
+      - Сайт — услуги
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceCard'
+          description: ''
+  /api/v1/site/services/{id}/:
+    get:
+      operationId: v1_site_services_retrieve
+      description: |-
+        **Доступ:** публично, **без JWT**. Все тексты, изображения и порядок записей настраиваются в **админ-панели Django** (приложение сайта). Неактивные записи (`is_active=False` и аналоги) в выдачу не попадают там, где это предусмотрено моделью.
+
+        **Назначение:** полная страница одной услуги по **id**: hero, блок «Что вы получите», чипы, блоки выгод, шаги процесса, превью связанных услуг. Крошки на фронте: Главная → Услуги → заголовок.
+      summary: 'Услуга: полная страница по id'
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Сайт — услуги
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceCardDetail'
+          description: ''
+        '404':
+          description: Не найдена или снята с публикации
+  /api/v1/site/team/:
+    get:
+      operationId: v1_site_team_list
+      description: |-
+        **Доступ:** публично, **без JWT**. Все тексты, изображения и порядок записей настраиваются в **админ-панели Django** (приложение сайта). Неактивные записи (`is_active=False` и аналоги) в выдачу не попадают там, где это предусмотрено моделью.
+
+        **Назначение:** карточки сотрудников (ФИО, должность, фото, краткий текст).
+      summary: Команда
+      tags:
+      - Сайт — команда
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TeamMember'
+          description: ''
+components:
+  schemas:
+    AdvantageCard:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        sort_order:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Порядок
+        title:
+          type: string
+          title: Заголовок
+          maxLength: 300
+        body:
+          type: string
+          title: Текст
+        image:
+          type: string
+          format: uri
+          title: Изображение
+      required:
+      - body
+      - id
+      - title
+    AgentProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        username:
+          type: string
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+        is_verified:
+          type: boolean
+          readOnly: true
+        full_name:
+          type: string
+          title: Имя и фамилия
+          maxLength: 255
+        phone:
+          type: string
+          title: Телефон профиля
+          maxLength: 32
+        description:
+          type: string
+          title: Описание
+      required:
+      - email
+      - id
+      - is_verified
+      - username
+    AgentProfileUpdateRequest:
+      type: object
+      properties:
+        full_name:
+          type: string
+          title: Имя и фамилия
+          maxLength: 255
+        phone:
+          type: string
+          title: Телефон профиля
+          maxLength: 32
+        description:
+          type: string
+          title: Описание
+        email:
+          type: string
+          format: email
+          minLength: 1
+    AgentRequestCreateRequest:
+      type: object
+      description: Заявка только с формы; учётная запись создаётся администратором
+        вручную.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Имя
+          maxLength: 255
+        phone:
+          type: string
+          minLength: 1
+          title: Телефон
+          maxLength: 32
+        personal_data_consent:
+          type: boolean
+      required:
+      - name
+      - personal_data_consent
+      - phone
+    AgentTokenObtainRequest:
+      type: object
+      properties:
+        personal_data_consent:
+          type: boolean
+          writeOnly: true
+        username:
+          type: string
+          writeOnly: true
+          minLength: 1
+          description: Логин (username)
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - password
+      - personal_data_consent
+      - username
+    ArticleDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        slug:
+          type: string
+          pattern: ^[-\w]+$
+          maxLength: 220
+        title:
+          type: string
+          title: Заголовок
+          maxLength: 500
+        lead:
+          type: string
+          title: Подзаголовок / лид
+          maxLength: 600
+        description:
+          type: string
+          title: Краткое описание
+          description: Анонс для карточек, meta/snippet; отличается от короткого лида
+            под заголовком.
+        image:
+          type: string
+          format: uri
+          title: Обложка
+        published_at:
+          type: string
+          format: date
+          title: Дата публикации
+        sections:
+          type: string
+          readOnly: true
+        body:
+          type: string
+          title: 'Legacy: текст/HTML целиком'
+          description: Старый формат одного поля; для новых статей используйте блоки
+            ниже (inline в админке).
+      required:
+      - id
+      - image
+      - published_at
+      - sections
+      - slug
+      - title
+    ArticleList:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        slug:
+          type: string
+          pattern: ^[-\w]+$
+          maxLength: 220
+        title:
+          type: string
+          title: Заголовок
+          maxLength: 500
+        lead:
+          type: string
+          title: Подзаголовок / лид
+          maxLength: 600
+        description:
+          type: string
+          title: Краткое описание
+          description: Анонс для карточек, meta/snippet; отличается от короткого лида
+            под заголовком.
+        image:
+          type: string
+          format: uri
+          title: Обложка
+        published_at:
+          type: string
+          format: date
+          title: Дата публикации
+      required:
+      - id
+      - image
+      - published_at
+      - slug
+      - title
+    ChangePasswordRequest:
+      type: object
+      properties:
+        new_password:
+          type: string
+          writeOnly: true
+          minLength: 8
+        new_password_confirm:
+          type: string
+          writeOnly: true
+          minLength: 8
+      required:
+      - new_password
+      - new_password_confirm
+    ClientReview:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        sort_order:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Порядок
+        author_name:
+          type: string
+          title: Автор
+          maxLength: 200
+        city:
+          type: string
+          title: Город
+          maxLength: 200
+        text:
+          type: string
+          title: Текст отзыва
+      required:
+      - author_name
+      - id
+      - text
+    ConsultationLeadCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Имя
+          maxLength: 255
+        phone:
+          type: string
+          minLength: 1
+          title: Телефон
+          maxLength: 32
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        message:
+          type: string
+          title: Комментарий
+        personal_data_consent:
+          type: boolean
+          title: Согласие на обработку ПДн
+      required:
+      - name
+      - phone
+    ConsultationLeadCreated:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: ID созданной заявки
+        detail:
+          type: string
+      required:
+      - detail
+      - id
+    DistrictRef:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          title: Название
+          maxLength: 255
+        region:
+          enum:
+          - moscow
+          - saint_petersburg
+          type: string
+          x-spec-enum-id: f2e2eb410da94342
+          title: Регион
+          description: |-
+            Ограничено двумя регионами витрины: Москва или Санкт-Петербург.
+
+            * `moscow` - Москва
+            * `saint_petersburg` - Санкт-Петербург
+      required:
+      - id
+      - name
+    DistrictRefRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Название
+          maxLength: 255
+        region:
+          enum:
+          - moscow
+          - saint_petersburg
+          type: string
+          x-spec-enum-id: f2e2eb410da94342
+          title: Регион
+          description: |-
+            Ограничено двумя регионами витрины: Москва или Санкт-Петербург.
+
+            * `moscow` - Москва
+            * `saint_petersburg` - Санкт-Петербург
+      required:
+      - name
+    FAQEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        sort_order:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Порядок
+        question:
+          type: string
+          title: Вопрос
+          maxLength: 500
+        answer:
+          type: string
+          title: Ответ
+      required:
+      - answer
+      - id
+      - question
+    HeroSlide:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        site_region:
+          type: integer
+          nullable: true
+          title: Регион (город)
+          description: 'Опционально: если указан, слайд показывается только для этого
+            региона.'
+        title:
+          type: string
+          title: Заголовок
+          maxLength: 500
+        subtitle:
+          type: string
+          title: Подзаголовок
+          maxLength: 800
+        image:
+          type: string
+          format: uri
+          title: Изображение
+        sort_order:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Порядок
+      required:
+      - id
+      - image
+      - title
+    HighwayRef:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          title: Название
+          maxLength: 255
+        region:
+          enum:
+          - moscow
+          - saint_petersburg
+          type: string
+          x-spec-enum-id: f2e2eb410da94342
+          title: Регион
+          description: |-
+            Ограничено двумя регионами витрины: Москва или Санкт-Петербург.
+
+            * `moscow` - Москва
+            * `saint_petersburg` - Санкт-Петербург
+      required:
+      - id
+      - name
+    HighwayRefRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Название
+          maxLength: 255
+        region:
+          enum:
+          - moscow
+          - saint_petersburg
+          type: string
+          x-spec-enum-id: f2e2eb410da94342
+          title: Регион
+          description: |-
+            Ограничено двумя регионами витрины: Москва или Санкт-Петербург.
+
+            * `moscow` - Москва
+            * `saint_petersburg` - Санкт-Петербург
+      required:
+      - name
+    LandPlotListingDetails:
+      type: object
+      properties:
+        external_reference_id:
+          type: string
+          title: ID на витрине
+          description: Отображаемый номер для клиента (если нужен).
+          maxLength: 64
+        plot_number:
+          type: string
+          title: № участка
+          maxLength: 64
+        cadastral_number:
+          type: string
+          title: Кадастровый номер
+          maxLength: 128
+        land_purpose:
+          type: string
+          title: Назначение земли
+          maxLength: 255
+        contract_form:
+          type: string
+          title: Форма договора
+          maxLength: 128
+        completion_quarter_text:
+          type: string
+          title: Срок сдачи / подключения
+          maxLength: 128
+    LandPlotListingDetailsRequest:
+      type: object
+      properties:
+        external_reference_id:
+          type: string
+          title: ID на витрине
+          description: Отображаемый номер для клиента (если нужен).
+          maxLength: 64
+        plot_number:
+          type: string
+          title: № участка
+          maxLength: 64
+        cadastral_number:
+          type: string
+          title: Кадастровый номер
+          maxLength: 128
+        land_purpose:
+          type: string
+          title: Назначение земли
+          maxLength: 255
+        contract_form:
+          type: string
+          title: Форма договора
+          maxLength: 128
+        completion_quarter_text:
+          type: string
+          title: Срок сдачи / подключения
+          maxLength: 128
+    ListingIdWriteRequest:
+      type: object
+      properties:
+        property_listing:
+          type: integer
+          minimum: 1
+          description: ID объекта из каталога (`GET .../catalog/properties/` или поле
+            `id` в карточке). Учитываются только **опубликованные** объекты.
+      required:
+      - property_listing
+    PaginatedPropertyListingList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=400&limit=100
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=200&limit=100
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertyListing'
+    PaginatedPropertyListingRejectionNoticeList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=400&limit=100
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=200&limit=100
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertyListingRejectionNotice'
+    PaginatedPropertyListingUnitList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=400&limit=100
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?offset=200&limit=100
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertyListingUnit'
+    PatchedAgentProfileUpdateRequest:
+      type: object
+      properties:
+        full_name:
+          type: string
+          title: Имя и фамилия
+          maxLength: 255
+        phone:
+          type: string
+          title: Телефон профиля
+          maxLength: 32
+        description:
+          type: string
+          title: Описание
+        email:
+          type: string
+          format: email
+          minLength: 1
+    PatchedPropertyListingUnitRequest:
+      type: object
+      properties:
+        layout_label:
+          type: string
+          title: Группа планировки
+          description: Одинаковое значение — одна строка аккордеона (например Студия,
+            1-комнатная).
+          maxLength: 64
+        title:
+          type: string
+          title: Подпись на карточке
+          maxLength: 255
+        building:
+          type: string
+          title: Корпус
+          maxLength: 64
+        completion_text:
+          type: string
+          title: Срок сдачи
+          maxLength: 255
+        keys_handover_text:
+          type: string
+          title: Выдача ключей
+          maxLength: 255
+        rooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Комнат
+        is_studio:
+          type: boolean
+          title: Студия
+        price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,13}(?:\.\d{0,2})?$
+          title: Цена, ₽
+        total_area:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          title: S общая, м²
+        kitchen_area:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          title: S кухни, м²
+        floor:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Этаж
+        floors_total:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Этажей в доме
+        finishing:
+          type: string
+          title: Отделка
+          maxLength: 255
+        bathroom_summary:
+          type: string
+          title: Санузел
+          maxLength: 255
+        ceiling_height:
+          type: string
+          title: Высота потолков
+          maxLength: 64
+        balcony_summary:
+          type: string
+          title: Балкон
+          maxLength: 255
+        payment_methods:
+          type: string
+          title: Способы оплаты
+          maxLength: 500
+        banks:
+          type: string
+          title: Банки
+          maxLength: 500
+        is_apartments_legal:
+          type: boolean
+          title: Апартаменты
+        is_assignment:
+          type: boolean
+          title: Переуступка
+        is_two_level:
+          type: boolean
+          title: Двухуровневая
+        has_master_bedroom:
+          type: boolean
+          title: Мастер-спальня
+        image:
+          type: string
+          format: binary
+          nullable: true
+          title: Планировка / фото
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          title: Порядок
+    PatchedPropertyListingUpdateRequest:
+      type: object
+      description: 'PUT/PATCH: поля name и price не обязательны, если не меняете их.'
+      properties:
+        category_id:
+          type: integer
+          nullable: true
+          title: (Категория витрины) category_id
+          description: ID из `GET /api/v1/accounts/catalog/categories/`. Slug `land_plot`
+            — поля в `land_plot_details`, иначе — в `residential_details`.
+        property_type:
+          enum:
+          - land
+          - house
+          - apartment
+          - commercial
+          - other
+          type: string
+          x-spec-enum-id: b7cf1b80aeddc86c
+          title: (Тип объекта, legacy) property_type
+          description: |-
+            Необязательно: при сохранении подстраивается от категории.
+
+            * `land` - Земельные участки
+            * `house` - Дом
+            * `apartment` - Квартира
+            * `commercial` - Коммерческая
+            * `other` - Другое
+        name:
+          type: string
+          minLength: 1
+          title: (Название) name
+          maxLength: 500
+        price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,13}(?:\.\d{0,2})?$
+          title: (Цена, ₽) price
+          description: Цена в рублях (число).
+        settlement:
+          type: string
+          title: (Населённый пункт) settlement
+          maxLength: 255
+        district_id:
+          type: integer
+          nullable: true
+          title: (Район, справочник) district_id
+          description: ID из `GET /api/v1/accounts/catalog/districts/` (справочник).
+        highway_id:
+          type: integer
+          nullable: true
+          title: (Шоссе, справочник) highway_id
+          description: ID из `GET /api/v1/accounts/catalog/highways/`.
+        address:
+          type: string
+          title: (Адрес вручную) address
+          description: 'Вручную: улица, дом (район/шоссе — только id справочников).'
+          maxLength: 500
+        area:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+          title: (Площадь дома/объекта, м²) area
+          description: м²; для участка без строения можно не указывать.
+        land_area:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+          title: (Площадь участка, сот.) land_area
+          description: Земля в сотках.
+        distance_to_mkad_km:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,1})?$
+          nullable: true
+          title: (До МКАД, км) distance_to_mkad_km
+        lat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,2}(?:\.\d{0,18})?$
+          nullable: true
+          title: (Широта WGS84) lat
+        long:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,2}(?:\.\d{0,18})?$
+          nullable: true
+          title: (Долгота WGS84) long
+        has_asphalt_roads:
+          type: boolean
+          title: (Дороги асфальт) has_asphalt_roads
+        has_street_lighting:
+          type: boolean
+          title: (Освещение) has_street_lighting
+        has_guarded_territory:
+          type: boolean
+          title: (Охрана территории) has_guarded_territory
+        near_shops:
+          type: boolean
+          title: (Магазины рядом) near_shops
+        near_school_kindergarten:
+          type: boolean
+          title: (Школа/сад рядом) near_school_kindergarten
+        near_public_transport:
+          type: boolean
+          title: (ОТ рядом) near_public_transport
+        floors:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: (Этажей) floors
+        rooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: (Комнат) rooms
+        bedrooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: (Спален) bedrooms
+        bathrooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: (Санузлов) bathrooms
+        year_built:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: (Год постройки) year_built
+        wall_material:
+          type: string
+          title: (Материал стен) wall_material
+          maxLength: 255
+        finishing:
+          type: string
+          title: (Отделка) finishing
+          maxLength: 255
+        electricity_supply:
+          type: string
+          title: (Электричество) electricity_supply
+          maxLength: 255
+        water_supply:
+          type: string
+          title: (Водоснабжение) water_supply
+          maxLength: 255
+        sewage_type:
+          type: string
+          title: (Канализация) sewage_type
+          maxLength: 255
+        heating_type:
+          type: string
+          title: (Отопление) heating_type
+          maxLength: 255
+        internet_connection:
+          type: string
+          title: (Интернет) internet_connection
+          maxLength: 255
+        communications:
+          type: string
+          title: (Коммуникации, кратко) communications
+          description: Общая строка; детали — в отдельных полях выше.
+          maxLength: 500
+        description:
+          type: string
+          title: (Описание) description
+        tags:
+          writeOnly: true
+          nullable: true
+          title: (Теги) tags
+          description: 'JSON в теле: `["тег1","тег2"]` или `[{"id":1,"tag_name":"имя"}]`.
+            В form-data: несколько полей `tags` **или** одна строка-состав `имя1,имя2`
+            (разделитель запятая), либо одна JSON-строка с массивом. Для фильтров
+            каталога используйте **точно** (строка в теге = имя чипа): `Акция`, `Старт
+            продаж`, `С выходом в Лес`, `Ж/д станция рядом` (соответствуют query `promo`,
+            `start_sales`, `forest_access`, `near_railway`). Другие произвольные имена
+            тоже допустимы.'
+        images:
+          type: array
+          items:
+            type: string
+            format: binary
+          writeOnly: true
+          title: (Изображения) images
+          description: 'Файлы: повторяйте поле images для каждого файла (multipart).'
+        residential_details:
+          allOf:
+          - $ref: '#/components/schemas/ResidentialListingDetailsRequest'
+          nullable: true
+          title: (Блок жилая / новостройка) residential_details
+          description: 'Объект JSON: застройщик, срок сдачи, класс жилья и т.д. Не
+            для категории земельного участка.'
+        land_plot_details:
+          allOf:
+          - $ref: '#/components/schemas/LandPlotListingDetailsRequest'
+          nullable: true
+          title: (Блок земельный участок) land_plot_details
+          description: 'Объект JSON: кадастр, назначение земли и т.д. Только при `category_id`
+            с slug `land_plot`.'
+    PropertyCategoryRef:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          title: Название
+          maxLength: 255
+        slug:
+          type: string
+          title: Код
+          description: 'Латиница без пробелов: new_building, suburban, land_plot…'
+          maxLength: 64
+          pattern: ^[-a-zA-Z0-9_]+$
+        sort_order:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Порядок
+      required:
+      - id
+      - name
+      - slug
+    PropertyCategoryRefRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          title: Название
+          maxLength: 255
+        slug:
+          type: string
+          minLength: 1
+          title: Код
+          description: 'Латиница без пробелов: new_building, suburban, land_plot…'
+          maxLength: 64
+          pattern: ^[-a-zA-Z0-9_]+$
+        sort_order:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Порядок
+      required:
+      - name
+      - slug
+    PropertyImage:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        image:
+          type: string
+          format: uri
+          title: Изображение
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          title: Порядок
+      required:
+      - id
+      - image
+    PropertyImageRequest:
+      type: object
+      properties:
+        image:
+          type: string
+          format: binary
+          title: Изображение
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          title: Порядок
+      required:
+      - image
+    PropertyListing:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        code:
+          type: string
+          readOnly: true
+          title: Код объекта
+        category:
+          allOf:
+          - $ref: '#/components/schemas/PropertyCategoryRef'
+          readOnly: true
+          nullable: true
+        property_type:
+          enum:
+          - land
+          - house
+          - apartment
+          - commercial
+          - other
+          type: string
+          x-spec-enum-id: b7cf1b80aeddc86c
+          title: Тип объекта (legacy)
+          description: |-
+            Подстраивается от категории при сохранении; для фильтров API пока сохраняем.
+
+            * `land` - Земельные участки
+            * `house` - Дом
+            * `apartment` - Квартира
+            * `commercial` - Коммерческая
+            * `other` - Другое
+        name:
+          type: string
+          title: Название
+          maxLength: 500
+        price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,13}(?:\.\d{0,2})?$
+          title: Цена, ₽
+        settlement:
+          type: string
+          title: Населённый пункт
+          maxLength: 255
+        district:
+          allOf:
+          - $ref: '#/components/schemas/DistrictRef'
+          readOnly: true
+        highway:
+          allOf:
+          - $ref: '#/components/schemas/HighwayRef'
+          readOnly: true
+        address:
+          type: string
+          title: Адрес (улица, дом)
+          description: 'Вручную: улица, дом, ориентир.'
+          maxLength: 500
+        area:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+          title: Площадь дома / объекта, м²
+          description: Жилая / общая площадь постройки; для участка без дома можно
+            не заполнять.
+        land_area:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+          title: Площадь участка, сот.
+          description: 'Только земля: сотки (1 сотка = 100 м²).'
+        distance_to_mkad_km:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,1})?$
+          nullable: true
+          title: До МКАД, км
+        lat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,2}(?:\.\d{0,18})?$
+          readOnly: true
+          nullable: true
+        long:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,2}(?:\.\d{0,18})?$
+          readOnly: true
+          nullable: true
+        has_asphalt_roads:
+          type: boolean
+          title: Асфальтированные дороги
+        has_street_lighting:
+          type: boolean
+          title: Уличное освещение
+        has_guarded_territory:
+          type: boolean
+          title: Охраняемая территория
+        near_shops:
+          type: boolean
+          title: Магазины рядом
+        near_school_kindergarten:
+          type: boolean
+          title: Школа и детский сад рядом
+        near_public_transport:
+          type: boolean
+          title: Остановка ОТ рядом
+        floors:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Этажей
+        rooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Комнат
+        bedrooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Спален
+        bathrooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Санузлов
+        year_built:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Год постройки
+        wall_material:
+          type: string
+          title: Материал стен
+          maxLength: 255
+        finishing:
+          type: string
+          title: Отделка
+          maxLength: 255
+        electricity_supply:
+          type: string
+          title: Электричество
+          maxLength: 255
+        water_supply:
+          type: string
+          title: Водоснабжение
+          maxLength: 255
+        sewage_type:
+          type: string
+          title: Канализация
+          maxLength: 255
+        heating_type:
+          type: string
+          title: Отопление
+          maxLength: 255
+        internet_connection:
+          type: string
+          title: Интернет
+          maxLength: 255
+        communications:
+          type: string
+          title: Коммуникации
+          maxLength: 500
+        description:
+          type: string
+          title: Описание
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertyTag'
+          readOnly: true
+        status:
+          enum:
+          - moderation
+          - published
+          - rejected
+          type: string
+          description: |-
+            * `moderation` - На модерации
+            * `published` - Опубликован
+            * `rejected` - Отклонён
+          x-spec-enum-id: 912f1465b5927d8f
+          readOnly: true
+          title: Статус
+        status_display:
+          type: string
+          readOnly: true
+        rejection_reason:
+          type: string
+          readOnly: true
+          title: Причина отклонения
+        is_actual_offer:
+          type: boolean
+          readOnly: true
+          title: В блоке «Актуальные предложения»
+          description: Показ на главной в карусели «Актуальные предложения». Включает
+            администратор.
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertyImage'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Создано
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Обновлено
+        is_favourite:
+          type: boolean
+          readOnly: true
+        is_compare:
+          type: boolean
+          readOnly: true
+        residential_details:
+          allOf:
+          - $ref: '#/components/schemas/ResidentialListingDetails'
+          readOnly: true
+          nullable: true
+        land_plot_details:
+          allOf:
+          - $ref: '#/components/schemas/LandPlotListingDetails'
+          readOnly: true
+          nullable: true
+        listing_units:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertyListingUnit'
+          readOnly: true
+      required:
+      - category
+      - code
+      - created_at
+      - district
+      - highway
+      - id
+      - images
+      - is_actual_offer
+      - is_compare
+      - is_favourite
+      - land_plot_details
+      - lat
+      - listing_units
+      - long
+      - name
+      - price
+      - rejection_reason
+      - residential_details
+      - status
+      - status_display
+      - tags
+      - updated_at
+    PropertyListingRejectionNotice:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        listing_id:
+          type: integer
+          readOnly: true
+        listing_code:
+          type: string
+          readOnly: true
+        listing_name:
+          type: string
+          readOnly: true
+        reason:
+          type: string
+          readOnly: true
+          title: Причина отклонения
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          title: Создано
+        is_seen:
+          type: boolean
+          readOnly: true
+          title: Просмотрено агентом
+        seen_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+          title: Когда просмотрено
+      required:
+      - created_at
+      - id
+      - is_seen
+      - listing_code
+      - listing_id
+      - listing_name
+      - reason
+      - seen_at
+    PropertyListingRequest:
+      type: object
+      properties:
+        property_type:
+          enum:
+          - land
+          - house
+          - apartment
+          - commercial
+          - other
+          type: string
+          x-spec-enum-id: b7cf1b80aeddc86c
+          title: Тип объекта (legacy)
+          description: |-
+            Подстраивается от категории при сохранении; для фильтров API пока сохраняем.
+
+            * `land` - Земельные участки
+            * `house` - Дом
+            * `apartment` - Квартира
+            * `commercial` - Коммерческая
+            * `other` - Другое
+        name:
+          type: string
+          minLength: 1
+          title: Название
+          maxLength: 500
+        price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,13}(?:\.\d{0,2})?$
+          title: Цена, ₽
+        settlement:
+          type: string
+          title: Населённый пункт
+          maxLength: 255
+        address:
+          type: string
+          title: Адрес (улица, дом)
+          description: 'Вручную: улица, дом, ориентир.'
+          maxLength: 500
+        area:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+          title: Площадь дома / объекта, м²
+          description: Жилая / общая площадь постройки; для участка без дома можно
+            не заполнять.
+        land_area:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+          title: Площадь участка, сот.
+          description: 'Только земля: сотки (1 сотка = 100 м²).'
+        distance_to_mkad_km:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,1})?$
+          nullable: true
+          title: До МКАД, км
+        has_asphalt_roads:
+          type: boolean
+          title: Асфальтированные дороги
+        has_street_lighting:
+          type: boolean
+          title: Уличное освещение
+        has_guarded_territory:
+          type: boolean
+          title: Охраняемая территория
+        near_shops:
+          type: boolean
+          title: Магазины рядом
+        near_school_kindergarten:
+          type: boolean
+          title: Школа и детский сад рядом
+        near_public_transport:
+          type: boolean
+          title: Остановка ОТ рядом
+        floors:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Этажей
+        rooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Комнат
+        bedrooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Спален
+        bathrooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Санузлов
+        year_built:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Год постройки
+        wall_material:
+          type: string
+          title: Материал стен
+          maxLength: 255
+        finishing:
+          type: string
+          title: Отделка
+          maxLength: 255
+        electricity_supply:
+          type: string
+          title: Электричество
+          maxLength: 255
+        water_supply:
+          type: string
+          title: Водоснабжение
+          maxLength: 255
+        sewage_type:
+          type: string
+          title: Канализация
+          maxLength: 255
+        heating_type:
+          type: string
+          title: Отопление
+          maxLength: 255
+        internet_connection:
+          type: string
+          title: Интернет
+          maxLength: 255
+        communications:
+          type: string
+          title: Коммуникации
+          maxLength: 500
+        description:
+          type: string
+          title: Описание
+      required:
+      - name
+      - price
+    PropertyListingUnit:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        layout_label:
+          type: string
+          title: Группа планировки
+          description: Одинаковое значение — одна строка аккордеона (например Студия,
+            1-комнатная).
+          maxLength: 64
+        title:
+          type: string
+          title: Подпись на карточке
+          maxLength: 255
+        building:
+          type: string
+          title: Корпус
+          maxLength: 64
+        completion_text:
+          type: string
+          title: Срок сдачи
+          maxLength: 255
+        price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,13}(?:\.\d{0,2})?$
+          title: Цена, ₽
+        rooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Комнат
+        total_area:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          title: S общая, м²
+        kitchen_area:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          title: S кухни, м²
+        floor:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Этаж
+        floors_total:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Этажей в доме
+        finishing:
+          type: string
+          title: Отделка
+          maxLength: 255
+        bathroom_summary:
+          type: string
+          title: Санузел
+          maxLength: 255
+        ceiling_height:
+          type: string
+          title: Высота потолков
+          maxLength: 64
+        balcony_summary:
+          type: string
+          title: Балкон
+          maxLength: 255
+        payment_methods:
+          type: string
+          title: Способы оплаты
+          maxLength: 500
+        banks:
+          type: string
+          title: Банки
+          maxLength: 500
+        is_apartments_legal:
+          type: boolean
+          title: Апартаменты
+        is_assignment:
+          type: boolean
+          title: Переуступка
+        is_two_level:
+          type: boolean
+          title: Двухуровневая
+        has_master_bedroom:
+          type: boolean
+          title: Мастер-спальня
+        price_per_sqm:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+          title: Цена за м², ₽
+        image:
+          type: string
+          format: uri
+          nullable: true
+          title: Планировка / фото
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          title: Порядок
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - price
+    PropertyListingUnitRequest:
+      type: object
+      properties:
+        layout_label:
+          type: string
+          title: Группа планировки
+          description: Одинаковое значение — одна строка аккордеона (например Студия,
+            1-комнатная).
+          maxLength: 64
+        title:
+          type: string
+          title: Подпись на карточке
+          maxLength: 255
+        building:
+          type: string
+          title: Корпус
+          maxLength: 64
+        completion_text:
+          type: string
+          title: Срок сдачи
+          maxLength: 255
+        price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,13}(?:\.\d{0,2})?$
+          title: Цена, ₽
+        rooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Комнат
+        total_area:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          title: S общая, м²
+        kitchen_area:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          title: S кухни, м²
+        floor:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Этаж
+        floors_total:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: Этажей в доме
+        finishing:
+          type: string
+          title: Отделка
+          maxLength: 255
+        bathroom_summary:
+          type: string
+          title: Санузел
+          maxLength: 255
+        ceiling_height:
+          type: string
+          title: Высота потолков
+          maxLength: 64
+        balcony_summary:
+          type: string
+          title: Балкон
+          maxLength: 255
+        payment_methods:
+          type: string
+          title: Способы оплаты
+          maxLength: 500
+        banks:
+          type: string
+          title: Банки
+          maxLength: 500
+        is_apartments_legal:
+          type: boolean
+          title: Апартаменты
+        is_assignment:
+          type: boolean
+          title: Переуступка
+        is_two_level:
+          type: boolean
+          title: Двухуровневая
+        has_master_bedroom:
+          type: boolean
+          title: Мастер-спальня
+        price_per_sqm:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+          title: Цена за м², ₽
+        image:
+          type: string
+          format: binary
+          nullable: true
+          title: Планировка / фото
+        sort_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          title: Порядок
+      required:
+      - price
+    PropertyListingUnitSummaryRow:
+      type: object
+      properties:
+        layout_label:
+          type: string
+        count:
+          type: integer
+        area_min:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        area_max:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        price_min:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,13}(?:\.\d{0,2})?$
+          nullable: true
+        price_max:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,13}(?:\.\d{0,2})?$
+          nullable: true
+        price_per_sqm_min:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+      required:
+      - area_max
+      - area_min
+      - count
+      - layout_label
+      - price_max
+      - price_min
+      - price_per_sqm_min
+    PropertyListingUpdateRequest:
+      type: object
+      description: 'PUT/PATCH: поля name и price не обязательны, если не меняете их.'
+      properties:
+        category_id:
+          type: integer
+          nullable: true
+          title: (Категория витрины) category_id
+          description: ID из `GET /api/v1/accounts/catalog/categories/`. Slug `land_plot`
+            — поля в `land_plot_details`, иначе — в `residential_details`.
+        property_type:
+          enum:
+          - land
+          - house
+          - apartment
+          - commercial
+          - other
+          type: string
+          x-spec-enum-id: b7cf1b80aeddc86c
+          title: (Тип объекта, legacy) property_type
+          description: |-
+            Необязательно: при сохранении подстраивается от категории.
+
+            * `land` - Земельные участки
+            * `house` - Дом
+            * `apartment` - Квартира
+            * `commercial` - Коммерческая
+            * `other` - Другое
+        name:
+          type: string
+          minLength: 1
+          title: (Название) name
+          maxLength: 500
+        price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,13}(?:\.\d{0,2})?$
+          title: (Цена, ₽) price
+          description: Цена в рублях (число).
+        settlement:
+          type: string
+          title: (Населённый пункт) settlement
+          maxLength: 255
+        district_id:
+          type: integer
+          nullable: true
+          title: (Район, справочник) district_id
+          description: ID из `GET /api/v1/accounts/catalog/districts/` (справочник).
+        highway_id:
+          type: integer
+          nullable: true
+          title: (Шоссе, справочник) highway_id
+          description: ID из `GET /api/v1/accounts/catalog/highways/`.
+        address:
+          type: string
+          title: (Адрес вручную) address
+          description: 'Вручную: улица, дом (район/шоссе — только id справочников).'
+          maxLength: 500
+        area:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+          title: (Площадь дома/объекта, м²) area
+          description: м²; для участка без строения можно не указывать.
+        land_area:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+          title: (Площадь участка, сот.) land_area
+          description: Земля в сотках.
+        distance_to_mkad_km:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,1})?$
+          nullable: true
+          title: (До МКАД, км) distance_to_mkad_km
+        lat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,2}(?:\.\d{0,18})?$
+          nullable: true
+          title: (Широта WGS84) lat
+        long:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,2}(?:\.\d{0,18})?$
+          nullable: true
+          title: (Долгота WGS84) long
+        has_asphalt_roads:
+          type: boolean
+          title: (Дороги асфальт) has_asphalt_roads
+        has_street_lighting:
+          type: boolean
+          title: (Освещение) has_street_lighting
+        has_guarded_territory:
+          type: boolean
+          title: (Охрана территории) has_guarded_territory
+        near_shops:
+          type: boolean
+          title: (Магазины рядом) near_shops
+        near_school_kindergarten:
+          type: boolean
+          title: (Школа/сад рядом) near_school_kindergarten
+        near_public_transport:
+          type: boolean
+          title: (ОТ рядом) near_public_transport
+        floors:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: (Этажей) floors
+        rooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: (Комнат) rooms
+        bedrooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: (Спален) bedrooms
+        bathrooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: (Санузлов) bathrooms
+        year_built:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: (Год постройки) year_built
+        wall_material:
+          type: string
+          title: (Материал стен) wall_material
+          maxLength: 255
+        finishing:
+          type: string
+          title: (Отделка) finishing
+          maxLength: 255
+        electricity_supply:
+          type: string
+          title: (Электричество) electricity_supply
+          maxLength: 255
+        water_supply:
+          type: string
+          title: (Водоснабжение) water_supply
+          maxLength: 255
+        sewage_type:
+          type: string
+          title: (Канализация) sewage_type
+          maxLength: 255
+        heating_type:
+          type: string
+          title: (Отопление) heating_type
+          maxLength: 255
+        internet_connection:
+          type: string
+          title: (Интернет) internet_connection
+          maxLength: 255
+        communications:
+          type: string
+          title: (Коммуникации, кратко) communications
+          description: Общая строка; детали — в отдельных полях выше.
+          maxLength: 500
+        description:
+          type: string
+          title: (Описание) description
+        tags:
+          writeOnly: true
+          nullable: true
+          title: (Теги) tags
+          description: 'JSON в теле: `["тег1","тег2"]` или `[{"id":1,"tag_name":"имя"}]`.
+            В form-data: несколько полей `tags` **или** одна строка-состав `имя1,имя2`
+            (разделитель запятая), либо одна JSON-строка с массивом. Для фильтров
+            каталога используйте **точно** (строка в теге = имя чипа): `Акция`, `Старт
+            продаж`, `С выходом в Лес`, `Ж/д станция рядом` (соответствуют query `promo`,
+            `start_sales`, `forest_access`, `near_railway`). Другие произвольные имена
+            тоже допустимы.'
+        images:
+          type: array
+          items:
+            type: string
+            format: binary
+          writeOnly: true
+          title: (Изображения) images
+          description: 'Файлы: повторяйте поле images для каждого файла (multipart).'
+        residential_details:
+          allOf:
+          - $ref: '#/components/schemas/ResidentialListingDetailsRequest'
+          nullable: true
+          title: (Блок жилая / новостройка) residential_details
+          description: 'Объект JSON: застройщик, срок сдачи, класс жилья и т.д. Не
+            для категории земельного участка.'
+        land_plot_details:
+          allOf:
+          - $ref: '#/components/schemas/LandPlotListingDetailsRequest'
+          nullable: true
+          title: (Блок земельный участок) land_plot_details
+          description: 'Объект JSON: кадастр, назначение земли и т.д. Только при `category_id`
+            с slug `land_plot`.'
+    PropertyListingWriteRequest:
+      type: object
+      description: 'Подписи в Swagger: «(русское имя) key» через label → title в OpenAPI.'
+      properties:
+        category_id:
+          type: integer
+          title: (Категория витрины) category_id
+          description: ID из `GET /api/v1/accounts/catalog/categories/`. Slug `land_plot`
+            — поля в `land_plot_details`, иначе — в `residential_details`.
+        property_type:
+          enum:
+          - land
+          - house
+          - apartment
+          - commercial
+          - other
+          type: string
+          x-spec-enum-id: b7cf1b80aeddc86c
+          title: (Тип объекта, legacy) property_type
+          description: |-
+            Необязательно: при сохранении подстраивается от категории.
+
+            * `land` - Земельные участки
+            * `house` - Дом
+            * `apartment` - Квартира
+            * `commercial` - Коммерческая
+            * `other` - Другое
+        name:
+          type: string
+          minLength: 1
+          title: (Название) name
+          maxLength: 500
+        price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,13}(?:\.\d{0,2})?$
+          title: (Цена, ₽) price
+          description: Цена в рублях (число).
+        settlement:
+          type: string
+          title: (Населённый пункт) settlement
+          maxLength: 255
+        district_id:
+          type: integer
+          nullable: true
+          title: (Район, справочник) district_id
+          description: ID из `GET /api/v1/accounts/catalog/districts/` (справочник).
+        highway_id:
+          type: integer
+          nullable: true
+          title: (Шоссе, справочник) highway_id
+          description: ID из `GET /api/v1/accounts/catalog/highways/`.
+        address:
+          type: string
+          title: (Адрес вручную) address
+          description: 'Вручную: улица, дом (район/шоссе — только id справочников).'
+          maxLength: 500
+        area:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+          title: (Площадь дома/объекта, м²) area
+          description: м²; для участка без строения можно не указывать.
+        land_area:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+          title: (Площадь участка, сот.) land_area
+          description: Земля в сотках.
+        distance_to_mkad_km:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,5}(?:\.\d{0,1})?$
+          nullable: true
+          title: (До МКАД, км) distance_to_mkad_km
+        lat:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,2}(?:\.\d{0,18})?$
+          nullable: true
+          title: (Широта WGS84) lat
+        long:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,2}(?:\.\d{0,18})?$
+          nullable: true
+          title: (Долгота WGS84) long
+        has_asphalt_roads:
+          type: boolean
+          title: (Дороги асфальт) has_asphalt_roads
+        has_street_lighting:
+          type: boolean
+          title: (Освещение) has_street_lighting
+        has_guarded_territory:
+          type: boolean
+          title: (Охрана территории) has_guarded_territory
+        near_shops:
+          type: boolean
+          title: (Магазины рядом) near_shops
+        near_school_kindergarten:
+          type: boolean
+          title: (Школа/сад рядом) near_school_kindergarten
+        near_public_transport:
+          type: boolean
+          title: (ОТ рядом) near_public_transport
+        floors:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: (Этажей) floors
+        rooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: (Комнат) rooms
+        bedrooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: (Спален) bedrooms
+        bathrooms:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: (Санузлов) bathrooms
+        year_built:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          nullable: true
+          title: (Год постройки) year_built
+        wall_material:
+          type: string
+          title: (Материал стен) wall_material
+          maxLength: 255
+        finishing:
+          type: string
+          title: (Отделка) finishing
+          maxLength: 255
+        electricity_supply:
+          type: string
+          title: (Электричество) electricity_supply
+          maxLength: 255
+        water_supply:
+          type: string
+          title: (Водоснабжение) water_supply
+          maxLength: 255
+        sewage_type:
+          type: string
+          title: (Канализация) sewage_type
+          maxLength: 255
+        heating_type:
+          type: string
+          title: (Отопление) heating_type
+          maxLength: 255
+        internet_connection:
+          type: string
+          title: (Интернет) internet_connection
+          maxLength: 255
+        communications:
+          type: string
+          title: (Коммуникации, кратко) communications
+          description: Общая строка; детали — в отдельных полях выше.
+          maxLength: 500
+        description:
+          type: string
+          title: (Описание) description
+        tags:
+          writeOnly: true
+          nullable: true
+          title: (Теги) tags
+          description: 'JSON в теле: `["тег1","тег2"]` или `[{"id":1,"tag_name":"имя"}]`.
+            В form-data: несколько полей `tags` **или** одна строка-состав `имя1,имя2`
+            (разделитель запятая), либо одна JSON-строка с массивом. Для фильтров
+            каталога используйте **точно** (строка в теге = имя чипа): `Акция`, `Старт
+            продаж`, `С выходом в Лес`, `Ж/д станция рядом` (соответствуют query `promo`,
+            `start_sales`, `forest_access`, `near_railway`). Другие произвольные имена
+            тоже допустимы.'
+        images:
+          type: array
+          items:
+            type: string
+            format: binary
+          writeOnly: true
+          title: (Изображения) images
+          description: 'Файлы: повторяйте поле images для каждого файла (multipart).'
+        residential_details:
+          allOf:
+          - $ref: '#/components/schemas/ResidentialListingDetailsRequest'
+          nullable: true
+          title: (Блок жилая / новостройка) residential_details
+          description: 'Объект JSON: застройщик, срок сдачи, класс жилья и т.д. Не
+            для категории земельного участка.'
+        land_plot_details:
+          allOf:
+          - $ref: '#/components/schemas/LandPlotListingDetailsRequest'
+          nullable: true
+          title: (Блок земельный участок) land_plot_details
+          description: 'Объект JSON: кадастр, назначение земли и т.д. Только при `category_id`
+            с slug `land_plot`.'
+      required:
+      - category_id
+      - name
+      - price
+    PropertyTag:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        tag_name:
+          type: string
+          title: Тег
+          maxLength: 200
+      required:
+      - id
+      - tag_name
+    PropertyTagRequest:
+      type: object
+      properties:
+        tag_name:
+          type: string
+          minLength: 1
+          title: Тег
+          maxLength: 200
+      required:
+      - tag_name
+    PropertyTagsReplaceRequest:
+      type: object
+      description: 'Тело PUT /properties/{id}/tags/: тот же формат, что и tags при
+        создании объекта.'
+      properties:
+        tags:
+          description: '`["а","б"]` или `[{"id":1,"tag_name":"х"}]`; `[]` удаляет
+            все теги. Чипы каталога (имена как в `tags`): `Акция`, `Старт продаж`,
+            `С выходом в Лес`, `Ж/д станция рядом`.'
+      required:
+      - tags
+    ResidentialListingDetails:
+      type: object
+      properties:
+        developer:
+          type: string
+          title: Застройщик
+          maxLength: 255
+        completion_period_text:
+          type: string
+          title: Срок сдачи (текст)
+          description: 'Например: 3 кв. 2026 — 2 кв. 2028'
+          maxLength: 255
+        housing_class:
+          type: string
+          title: Класс жилья
+          maxLength: 128
+        house_construction_type:
+          type: string
+          title: Тип дома
+          maxLength: 255
+        parking_info:
+          type: string
+          title: Паркинг
+          maxLength: 255
+        registration_settlement:
+          type: string
+          title: Регистрация / НП
+          maxLength: 255
+        escrow_bank:
+          type: string
+          title: Эскроу-счёт (банк)
+          maxLength: 255
+        project_finishing:
+          type: string
+          title: Отделка (уровень проекта)
+          maxLength: 255
+        district_note:
+          type: string
+          title: Район (подпись в карточке)
+          maxLength: 255
+        units_total:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+          title: Всего квартир / единиц
+        units_available:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+          title: В продаже
+        price_per_sqm_from:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+          title: Цена за м² от, ₽
+        contract_form:
+          type: string
+          title: Форма договора
+          maxLength: 128
+        payment_methods:
+          type: string
+          title: Способы оплаты
+        travel_time_note:
+          type: string
+          title: Подпись про дорогу до города
+          description: 'Например: До Москвы — 25 мин на автомобиле'
+          maxLength: 255
+        plot_location_text:
+          type: string
+          title: Участок и локация (текст)
+    ResidentialListingDetailsRequest:
+      type: object
+      properties:
+        developer:
+          type: string
+          title: Застройщик
+          maxLength: 255
+        completion_period_text:
+          type: string
+          title: Срок сдачи (текст)
+          description: 'Например: 3 кв. 2026 — 2 кв. 2028'
+          maxLength: 255
+        housing_class:
+          type: string
+          title: Класс жилья
+          maxLength: 128
+        house_construction_type:
+          type: string
+          title: Тип дома
+          maxLength: 255
+        parking_info:
+          type: string
+          title: Паркинг
+          maxLength: 255
+        registration_settlement:
+          type: string
+          title: Регистрация / НП
+          maxLength: 255
+        escrow_bank:
+          type: string
+          title: Эскроу-счёт (банк)
+          maxLength: 255
+        project_finishing:
+          type: string
+          title: Отделка (уровень проекта)
+          maxLength: 255
+        district_note:
+          type: string
+          title: Район (подпись в карточке)
+          maxLength: 255
+        units_total:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+          title: Всего квартир / единиц
+        units_available:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+          nullable: true
+          title: В продаже
+        price_per_sqm_from:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+          title: Цена за м² от, ₽
+        contract_form:
+          type: string
+          title: Форма договора
+          maxLength: 128
+        payment_methods:
+          type: string
+          title: Способы оплаты
+        travel_time_note:
+          type: string
+          title: Подпись про дорогу до города
+          description: 'Например: До Москвы — 25 мин на автомобиле'
+          maxLength: 255
+        plot_location_text:
+          type: string
+          title: Участок и локация (текст)
+    ServiceBenefitBlock:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        sort_order:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Порядок
+        title:
+          type: string
+          title: Заголовок
+          maxLength: 300
+        body:
+          type: string
+          title: Описание
+      required:
+      - body
+      - id
+      - title
+    ServiceCard:
+      type: object
+      description: Карточка для списка на главной / блок «Другие услуги».
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        slug:
+          type: string
+          nullable: true
+          description: Опционально, для URL; запросы работают по `id`. Несколько пустых
+            значений допустимы только с NULL.
+          pattern: ^[-\w]+$
+          maxLength: 320
+        sort_order:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Порядок
+        title:
+          type: string
+          title: Заголовок
+          maxLength: 300
+        body:
+          type: string
+          title: Краткое описание (карточка)
+          description: Текст для плитки «Другие услуги» / списка на главной.
+        image:
+          type: string
+          format: uri
+          title: Изображение (герой / карточка)
+      required:
+      - body
+      - id
+      - image
+      - title
+    ServiceCardDetail:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        slug:
+          type: string
+          nullable: true
+          description: Опционально, для URL; запросы работают по `id`. Несколько пустых
+            значений допустимы только с NULL.
+          pattern: ^[-\w]+$
+          maxLength: 320
+        sort_order:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Порядок
+        title:
+          type: string
+          title: Заголовок
+          maxLength: 300
+        body:
+          type: string
+          title: Краткое описание (карточка)
+          description: Текст для плитки «Другие услуги» / списка на главной.
+        hero_text:
+          type: string
+          title: Текст героя (страница услуги)
+          description: Основной текст под заголовком на странице услуги (несколько
+            абзацев).
+        image:
+          type: string
+          format: uri
+          title: Изображение (герой / карточка)
+        section_features_title:
+          type: string
+          title: Заголовок блока «Что вы получите»
+          maxLength: 200
+        section_workflow_title:
+          type: string
+          title: Заголовок блока «Как мы работаем»
+          maxLength: 200
+        cta_label:
+          type: string
+          title: Текст кнопки заявки
+          maxLength: 120
+        feature_lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceFeatureLine'
+          readOnly: true
+        pill_tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServicePillTag'
+          readOnly: true
+        benefit_blocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceBenefitBlock'
+          readOnly: true
+        workflow_steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceWorkflowStep'
+          readOnly: true
+        related_services:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceRelatedTeaser'
+          readOnly: true
+      required:
+      - benefit_blocks
+      - body
+      - feature_lines
+      - id
+      - image
+      - pill_tags
+      - related_services
+      - title
+      - workflow_steps
+    ServiceFeatureLine:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        sort_order:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Порядок
+        text:
+          type: string
+          title: Пункт списка
+          maxLength: 600
+      required:
+      - id
+      - text
+    ServicePillTag:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        sort_order:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Порядок
+        text:
+          type: string
+          title: Тег-чип
+          maxLength: 200
+      required:
+      - id
+      - text
+    ServiceRelatedTeaser:
+      type: object
+      description: Другие услуги — без вложенных связей (без рекурсии).
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        slug:
+          type: string
+          nullable: true
+          description: Опционально, для URL; запросы работают по `id`. Несколько пустых
+            значений допустимы только с NULL.
+          pattern: ^[-\w]+$
+          maxLength: 320
+        sort_order:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Порядок
+        title:
+          type: string
+          title: Заголовок
+          maxLength: 300
+        body:
+          type: string
+          title: Краткое описание (карточка)
+          description: Текст для плитки «Другие услуги» / списка на главной.
+        image:
+          type: string
+          format: uri
+          title: Изображение (герой / карточка)
+      required:
+      - body
+      - id
+      - image
+      - title
+    ServiceWorkflowStep:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        step_number:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Номер шага
+        title:
+          type: string
+          title: Заголовок шага
+          maxLength: 300
+        body:
+          type: string
+          title: Подзаголовок / описание
+      required:
+      - id
+      - title
+    SiteContacts:
+      type: object
+      properties:
+        phone:
+          type: string
+          title: Телефон
+          maxLength: 64
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        address:
+          type: string
+          title: Адрес офиса
+          maxLength: 500
+        work_hours:
+          type: string
+          title: Режим работы
+          description: 'Напр.: Пн–Пт 9:00–18:00; Сб–Вс — выходной'
+          maxLength: 300
+        telegram_url:
+          type: string
+          format: uri
+          title: Telegram
+          maxLength: 200
+        vk_url:
+          type: string
+          format: uri
+          title: ВКонтакте
+          maxLength: 200
+        map_embed_url:
+          type: string
+          format: uri
+          title: URL карты (iframe / ссылка)
+          description: 'Опционально: ссылка на Яндекс.Карты / Google Maps'
+          maxLength: 800
+      required:
+      - address
+      - email
+      - phone
+      - work_hours
+    SiteGeoDetect:
+      type: object
+      description: Ответ GET /site/geo/ — координаты и человекочитаемое название места.
+      properties:
+        client_ip:
+          type: string
+        location_source:
+          enum:
+          - coordinates
+          - ip_demo
+          type: string
+          description: |-
+            * `coordinates` - coordinates
+            * `ip_demo` - ip_demo
+          x-spec-enum-id: 352d27695796b86e
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        place_name:
+          type: string
+          nullable: true
+          description: Город / населённый пункт (Nominatim при lat/lon; при ip_demo
+            — демо-город).
+        full_address:
+          type: string
+          nullable: true
+        country_code:
+          type: string
+          nullable: true
+      required:
+      - client_ip
+      - latitude
+      - location_source
+      - longitude
+    SiteRegion:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        name:
+          type: string
+          title: Название
+          maxLength: 128
+        slug:
+          type: string
+          maxLength: 140
+          pattern: ^[-a-zA-Z0-9_]+$
+        sort_order:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Порядок
+        latitude:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,6})?$
+          nullable: true
+          title: Широта (WGS84)
+          description: Для подбора ближайшего региона по координатам клиента.
+        longitude:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,6})?$
+          nullable: true
+          title: Долгота (WGS84)
+          description: Вместе с широтой — для API геолокации.
+      required:
+      - id
+      - name
+      - slug
+    TeamMember:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        sort_order:
+          type: integer
+          maximum: 32767
+          minimum: 0
+          title: Порядок
+        full_name:
+          type: string
+          title: ФИО
+          maxLength: 200
+        role:
+          type: string
+          title: Должность
+          maxLength: 200
+        experience:
+          type: string
+          title: Опыт
+          maxLength: 300
+        photo:
+          type: string
+          format: uri
+          title: Фото
+      required:
+      - full_name
+      - id
+      - photo
+      - role
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+      required:
+      - access
+    TokenRefreshRequest:
+      type: object
+      properties:
+        refresh:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - refresh
+  securitySchemes:
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+servers:
+- url: https://realline.cardeurope.ru
+  description: Production server
+- url: http://localhost:8000
+  description: Development server
+tags:
+- name: Accounts — авторизация
+  description: POST /register/ (заявка с формы), POST /login/, POST /token/refresh/
+    — JWT.
+- name: Accounts — профиль
+  description: Профиль агента и смена пароля
+- name: Accounts — объекты
+  description: 'Объекты агента: GET/POST список, GET/PUT/PATCH/DELETE карточка; POST
+    multipart/form-data или JSON.'
+- name: Каталог
+  description: Справочники районов и шоссе (GET), публичный список объектов с фильтрами.
+- name: Сайт — регионы
+  description: Города РФ в админке/сидах. GET /api/v1/site/regions/?name=… GET /api/v1/site/geo/
+    — place_name по lat/lon (OSM Nominatim) или демо по IP.
+- name: Сайт — баннеры
+  description: Слайды главной страницы. GET /api/v1/site/hero-slides/
+- name: Сайт — преимущества
+  description: Карточки «Почему мы». GET /api/v1/site/advantages/
+- name: Сайт — услуги
+  description: Список карточек GET /api/v1/site/services/; полная страница услуги
+    GET /api/v1/site/services/{id}/.
+- name: Сайт — FAQ
+  description: Частые вопросы и ответы. GET /api/v1/site/faq/
+- name: Сайт — блог
+  description: 'Статьи: список и деталь по slug. GET /api/v1/site/articles/'
+- name: Сайт — команда
+  description: Сотрудники. GET /api/v1/site/team/
+- name: Сайт — отзывы
+  description: Отзывы клиентов. GET /api/v1/site/reviews/
+- name: Сайт — контакты
+  description: Телефон, email, адрес, соцсети. GET /api/v1/site/contacts/
+- name: Сайт — консультации
+  description: Заявка с формы «Получить консультацию». POST /api/v1/site/consultation/
+    без JWT.
+- name: Accounts — витрина (пользователь)
+  description: Избранное и сравнение для **авторизованного** пользователя (JWT). Только
+    опубликованные объекты из каталога.
+- name: Accounts — уведомления
+  description: 'Уведомления агента об **отклонении** объекта модератором: GET список
+    и GET по id (при открытии детали **`is_seen`** становится true). Создание записей
+    — только из **админки**.'

@@ -1,7 +1,7 @@
 from django.db.models import Count, Max, Min
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, OpenApiTypes, extend_schema
 from rest_framework import generics
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -177,8 +177,24 @@ class PropertyCategoryListView(generics.ListAPIView):
     description=(
         '**Назначение:** подсказка для поля «Район» в формах и фильтр **`district`** в каталоге (значение = **id** записи).\n\n'
         '**Доступ:** публично. Формат ответа: массив `{ id, name }`. Список отсортирован по названию.\n\n'
-        'В теле создания/обновления объекта передаётся **`district_id`**, не текст названия.'
+        'В теле создания/обновления объекта передаётся **`district_id`**, не текст названия.\n\n'
+        '**Фильтр по региону:** query-параметр **`region`** (или legacy-алиас **`country`**) со значением '
+        '`moscow` или `saint_petersburg`.'
     ),
+    parameters=[
+        OpenApiParameter(
+            name='region',
+            type=OpenApiTypes.STR,
+            required=False,
+            description='Фильтр: `moscow` или `saint_petersburg`.',
+        ),
+        OpenApiParameter(
+            name='country',
+            type=OpenApiTypes.STR,
+            required=False,
+            description='Алиас для `region`: `moscow` или `saint_petersburg`.',
+        ),
+    ],
     responses={200: DistrictRefSerializer(many=True)},
 )
 class DistrictListView(generics.ListAPIView):
@@ -202,8 +218,24 @@ class DistrictListView(generics.ListAPIView):
     description=(
         '**Назначение:** выбор шоссе при заполнении карточки и фильтр **`highway`** в каталоге.\n\n'
         '**Доступ:** публично. Ответ: `{ id, name }` для каждой записи.\n\n'
-        'В API объекта поле **`highway_id`** — внешний ключ на `id` из этого списка; текст шоссе вручную не подставляется.'
+        'В API объекта поле **`highway_id`** — внешний ключ на `id` из этого списка; текст шоссе вручную не подставляется.\n\n'
+        '**Фильтр по региону:** query-параметр **`region`** (или legacy-алиас **`country`**) со значением '
+        '`moscow` или `saint_petersburg`.'
     ),
+    parameters=[
+        OpenApiParameter(
+            name='region',
+            type=OpenApiTypes.STR,
+            required=False,
+            description='Фильтр: `moscow` или `saint_petersburg`.',
+        ),
+        OpenApiParameter(
+            name='country',
+            type=OpenApiTypes.STR,
+            required=False,
+            description='Алиас для `region`: `moscow` или `saint_petersburg`.',
+        ),
+    ],
     responses={200: HighwayRefSerializer(many=True)},
 )
 class HighwayListView(generics.ListAPIView):
