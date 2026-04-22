@@ -186,7 +186,14 @@ class DistrictListView(generics.ListAPIView):
     authentication_classes = ()
     serializer_class = DistrictRefSerializer
     pagination_class = None
-    queryset = District.objects.all()
+
+    def get_queryset(self):
+        qs = District.objects.filter(region__in=(District.Region.MOSCOW, District.Region.SAINT_PETERSBURG))
+        # Поддержка query-параметра "region" (правильно) и "country" (как иногда называют на фронте).
+        region = (self.request.query_params.get('region') or self.request.query_params.get('country') or '').strip()
+        if region:
+            qs = qs.filter(region=region)
+        return qs.order_by('name')
 
 
 @extend_schema(
@@ -204,7 +211,13 @@ class HighwayListView(generics.ListAPIView):
     authentication_classes = ()
     serializer_class = HighwayRefSerializer
     pagination_class = None
-    queryset = Highway.objects.all()
+
+    def get_queryset(self):
+        qs = Highway.objects.filter(region__in=(Highway.Region.MOSCOW, Highway.Region.SAINT_PETERSBURG))
+        region = (self.request.query_params.get('region') or self.request.query_params.get('country') or '').strip()
+        if region:
+            qs = qs.filter(region=region)
+        return qs.order_by('name')
 
 
 class _PublishedListingUnitsMixin:

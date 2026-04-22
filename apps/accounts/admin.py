@@ -445,13 +445,15 @@ class PropertyCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(District)
 class DistrictAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name')
+    list_display = ('id', 'name', 'region')
+    list_filter = ('region',)
     search_fields = ('name',)
 
 
 @admin.register(Highway)
 class HighwayAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name')
+    list_display = ('id', 'name', 'region')
+    list_filter = ('region',)
     search_fields = ('name',)
 
 

@@ -87,14 +87,14 @@ def _ensure_land_category():
 def _ensure_districts():
     names = ['Мытищи', 'Красногорск', 'Одинцово', 'Подольск', 'Люберцы']
     for n in names:
-        District.objects.get_or_create(name=n)
+        District.objects.get_or_create(name=n, defaults={'region': District.Region.MOSCOW})
     return list(District.objects.all()[:8])
 
 
 def _ensure_highways():
     names = ['Минское шоссе', 'Новорижское шоссе', 'Киевское шоссе']
     for n in names:
-        Highway.objects.get_or_create(name=n)
+        Highway.objects.get_or_create(name=n, defaults={'region': Highway.Region.MOSCOW})
     return list(Highway.objects.all()[:6])
 
 

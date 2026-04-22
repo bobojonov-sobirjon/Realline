@@ -95,7 +95,19 @@ class AgentRequest(models.Model):
 class District(models.Model):
     """Справочник районов (Москва и область — демо-данные для каталога)."""
 
+    class Region(models.TextChoices):
+        MOSCOW = 'moscow', _('Москва')
+        SAINT_PETERSBURG = 'saint_petersburg', _('Санкт-Петербург')
+
     name = models.CharField(_('название'), max_length=255, unique=True)
+    region = models.CharField(
+        _('регион'),
+        max_length=32,
+        choices=Region.choices,
+        default=Region.MOSCOW,
+        db_index=True,
+        help_text=_('Ограничено двумя регионами витрины: Москва или Санкт-Петербург.'),
+    )
 
     class Meta:
         verbose_name = _('район')
@@ -109,7 +121,19 @@ class District(models.Model):
 class Highway(models.Model):
     """Справочник шоссе (демо-данные)."""
 
+    class Region(models.TextChoices):
+        MOSCOW = 'moscow', _('Москва')
+        SAINT_PETERSBURG = 'saint_petersburg', _('Санкт-Петербург')
+
     name = models.CharField(_('название'), max_length=255, unique=True)
+    region = models.CharField(
+        _('регион'),
+        max_length=32,
+        choices=Region.choices,
+        default=Region.MOSCOW,
+        db_index=True,
+        help_text=_('Ограничено двумя регионами витрины: Москва или Санкт-Петербург.'),
+    )
 
     class Meta:
         verbose_name = _('шоссе')

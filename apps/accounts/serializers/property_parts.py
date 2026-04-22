@@ -19,13 +19,13 @@ class PropertyTagSerializer(serializers.ModelSerializer):
 class DistrictRefSerializer(serializers.ModelSerializer):
     class Meta:
         model = District
-        fields = ('id', 'name')
+        fields = ('id', 'name', 'region')
 
 
 class HighwayRefSerializer(serializers.ModelSerializer):
     class Meta:
         model = Highway
-        fields = ('id', 'name')
+        fields = ('id', 'name', 'region')
 
 
 class PropertyCategoryRefSerializer(serializers.ModelSerializer):

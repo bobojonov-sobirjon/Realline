@@ -353,7 +353,9 @@ class PropertyListingWriteSerializer(serializers.ModelSerializer):
     )
 
     district_id = serializers.PrimaryKeyRelatedField(
-        queryset=District.objects.all(),
+        queryset=District.objects.filter(
+            region__in=(District.Region.MOSCOW, District.Region.SAINT_PETERSBURG)
+        ),
         source='district',
         required=False,
         allow_null=True,
@@ -361,7 +363,9 @@ class PropertyListingWriteSerializer(serializers.ModelSerializer):
         help_text='ID из `GET /api/v1/accounts/catalog/districts/` (справочник).',
     )
     highway_id = serializers.PrimaryKeyRelatedField(
-        queryset=Highway.objects.all(),
+        queryset=Highway.objects.filter(
+            region__in=(Highway.Region.MOSCOW, Highway.Region.SAINT_PETERSBURG)
+        ),
         source='highway',
         required=False,
         allow_null=True,
