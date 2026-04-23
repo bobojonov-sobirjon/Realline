@@ -33,6 +33,7 @@ urlpatterns = [
     ),
     path('profile/compare/', views.CompareListView.as_view(), name='compare-list'),
     path('profile/compare/add/', views.CompareAddView.as_view(), name='compare-add'),
+    path('profile/compare/table/', views.CompareTableView.as_view(), name='compare-table'),
     path(
         'profile/compare/<int:listing_id>/',
         views.CompareRemoveView.as_view(),

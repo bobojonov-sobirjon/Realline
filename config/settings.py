@@ -488,7 +488,7 @@ SPECTACULAR_SETTINGS = {
         'hideHostname': True,
     },
     'SERVERS': [
-        {'url': 'https://realline.cardeurope.ru', 'description': 'Production server'},
+        {'url': 'https://admin.reallain.ru', 'description': 'Production server'},
         {'url': 'http://localhost:8000', 'description': 'Development server'},
     ],
     'TAGS': [

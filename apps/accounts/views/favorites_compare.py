@@ -9,7 +9,7 @@ from apps.accounts.models import PropertyListing, UserCompareListing, UserFavori
 from apps.accounts.serializers import PropertyListingSerializer
 from apps.accounts.serializers.favorites_compare import ListingIdWriteSerializer
 
-COMPARE_MAX_ITEMS = 10
+COMPARE_MAX_ITEMS = 5
 
 _ACC_TAG = ['Accounts — витрина (пользователь)']
 _FAV_DESC = (
@@ -188,3 +188,117 @@ class CompareRemoveView(APIView):
         if not n:
             return Response({'detail': 'Объект не был в сравнении.'}, status=status.HTTP_404_NOT_FOUND)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+def _as_bool(v):
+    if v is None:
+        return None
+    return bool(v)
+
+
+def _first_image_url(listing: PropertyListing, request):
+    images_mgr = getattr(listing, 'images', None)
+    if images_mgr is None or not hasattr(images_mgr, 'all'):
+        return None
+    img = images_mgr.all().first()
+    if not img or not getattr(img, 'image', None):
+        return None
+    url = img.image.url
+    return request.build_absolute_uri(url) if request else url
+
+
+def _label_or_none(ref_obj, attr='name'):
+    if not ref_obj:
+        return None
+    return getattr(ref_obj, attr, None)
+
+
+def _compare_row(key: str, label: str, row_type: str, listings: list[PropertyListing], getter):
+    return {
+        'key': key,
+        'label': label,
+        'type': row_type,
+        'values': [getter(x) for x in listings],
+    }
+
+
+@extend_schema(
+    tags=_ACC_TAG,
+    summary='Сравнение: данные для таблицы сравнения',
+    description=(
+        'Возвращает корзину сравнения в формате, удобном для построения таблицы: '
+        'вверху — список объектов (колонки), ниже — строки с полями и значениями.\n\n' + _CMP_DESC
+    ),
+    responses={200: OpenApiResponse(description='Структура таблицы сравнения')},
+)
+class CompareTableView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        links = UserCompareListing.objects.filter(user=request.user).order_by('sort_order', 'id')
+        listing_ids = list(links.values_list('listing_id', flat=True))
+        if not listing_ids:
+            return Response({'items': [], 'rows': []})
+
+        id_order = {pk: i for i, pk in enumerate(listing_ids)}
+        qs = _published_listing_qs().filter(pk__in=listing_ids).select_related(
+            'residential_details',
+            'land_plot_details',
+        )
+        listings = sorted(qs, key=lambda x: id_order.get(x.pk, 0))
+
+        items = [
+            {
+                'id': x.pk,
+                'code': x.code,
+                'name': x.name,
+                'price': x.price,
+                'image': _first_image_url(x, request),
+            }
+            for x in listings
+        ]
+
+        rows = [
+            _compare_row('category', 'Категория', 'text', listings, lambda x: _label_or_none(x.category)),
+            _compare_row('property_type', 'Тип', 'text', listings, lambda x: x.get_property_type_display() if hasattr(x, 'get_property_type_display') else x.property_type),
+            _compare_row('settlement', 'Населённый пункт', 'text', listings, lambda x: x.settlement or None),
+            _compare_row('district', 'Район', 'text', listings, lambda x: _label_or_none(x.district)),
+            _compare_row('highway', 'Шоссе', 'text', listings, lambda x: _label_or_none(x.highway)),
+            _compare_row('address', 'Адрес', 'text', listings, lambda x: x.address or None),
+            _compare_row('area', 'Площадь объекта, м²', 'number', listings, lambda x: x.area),
+            _compare_row('land_area', 'Площадь участка, сот.', 'number', listings, lambda x: x.land_area),
+            _compare_row('distance_to_mkad_km', 'До МКАД, км', 'number', listings, lambda x: x.distance_to_mkad_km),
+            _compare_row('floors', 'Этажей', 'number', listings, lambda x: x.floors),
+            _compare_row('rooms', 'Комнат', 'number', listings, lambda x: x.rooms),
+            _compare_row('bedrooms', 'Спален', 'number', listings, lambda x: x.bedrooms),
+            _compare_row('bathrooms', 'Санузлов', 'number', listings, lambda x: x.bathrooms),
+            _compare_row('year_built', 'Год постройки', 'number', listings, lambda x: x.year_built),
+            _compare_row('wall_material', 'Материал стен', 'text', listings, lambda x: x.wall_material or None),
+            _compare_row('finishing', 'Отделка', 'text', listings, lambda x: x.finishing or None),
+            _compare_row('electricity_supply', 'Электричество', 'text', listings, lambda x: x.electricity_supply or None),
+            _compare_row('water_supply', 'Водоснабжение', 'text', listings, lambda x: x.water_supply or None),
+            _compare_row('sewage_type', 'Канализация', 'text', listings, lambda x: x.sewage_type or None),
+            _compare_row('heating_type', 'Отопление', 'text', listings, lambda x: x.heating_type or None),
+            _compare_row('internet_connection', 'Интернет', 'text', listings, lambda x: x.internet_connection or None),
+            _compare_row('has_asphalt_roads', 'Асфальтированные дороги', 'bool', listings, lambda x: _as_bool(x.has_asphalt_roads)),
+            _compare_row('has_street_lighting', 'Уличное освещение', 'bool', listings, lambda x: _as_bool(x.has_street_lighting)),
+            _compare_row('has_guarded_territory', 'Охраняемая территория', 'bool', listings, lambda x: _as_bool(x.has_guarded_territory)),
+            _compare_row('near_shops', 'Магазины рядом', 'bool', listings, lambda x: _as_bool(x.near_shops)),
+            _compare_row('near_school_kindergarten', 'Школа и детский сад рядом', 'bool', listings, lambda x: _as_bool(x.near_school_kindergarten)),
+            _compare_row('near_public_transport', 'Остановка ОТ рядом', 'bool', listings, lambda x: _as_bool(x.near_public_transport)),
+
+            # Category-specific blocks (if absent — null)
+            _compare_row('residential.developer', 'Застройщик', 'text', listings, lambda x: getattr(getattr(x, 'residential_details', None), 'developer', None) or None),
+            _compare_row('residential.completion_period_text', 'Срок сдачи (текст)', 'text', listings, lambda x: getattr(getattr(x, 'residential_details', None), 'completion_period_text', None) or None),
+            _compare_row('residential.housing_class', 'Класс жилья', 'text', listings, lambda x: getattr(getattr(x, 'residential_details', None), 'housing_class', None) or None),
+            _compare_row('residential.parking_info', 'Паркинг', 'text', listings, lambda x: getattr(getattr(x, 'residential_details', None), 'parking_info', None) or None),
+            _compare_row('residential.price_per_sqm_from', 'Цена за м² от, ₽', 'number', listings, lambda x: getattr(getattr(x, 'residential_details', None), 'price_per_sqm_from', None)),
+
+            _compare_row('land.external_reference_id', 'ID на витрине', 'text', listings, lambda x: getattr(getattr(x, 'land_plot_details', None), 'external_reference_id', None) or None),
+            _compare_row('land.plot_number', '№ участка', 'text', listings, lambda x: getattr(getattr(x, 'land_plot_details', None), 'plot_number', None) or None),
+            _compare_row('land.cadastral_number', 'Кадастровый номер', 'text', listings, lambda x: getattr(getattr(x, 'land_plot_details', None), 'cadastral_number', None) or None),
+            _compare_row('land.land_purpose', 'Назначение земли', 'text', listings, lambda x: getattr(getattr(x, 'land_plot_details', None), 'land_purpose', None) or None),
+            _compare_row('land.completion_quarter_text', 'Срок сдачи / подключения', 'text', listings, lambda x: getattr(getattr(x, 'land_plot_details', None), 'completion_quarter_text', None) or None),
+        ]
+
+        return Response({'items': items, 'rows': rows})
