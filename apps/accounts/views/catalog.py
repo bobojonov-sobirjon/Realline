@@ -20,6 +20,7 @@ from apps.accounts.serializers import (
     DistrictRefSerializer,
     HighwayRefSerializer,
     PropertyCategoryRefSerializer,
+    PropertyCategoryTreeSerializer,
     PropertyListingSerializer,
     PropertyListingUnitSerializer,
     PropertyListingUnitSummaryRowSerializer,
@@ -153,22 +154,38 @@ class PropertyPublishedDetailView(PropertyCatalogDetailView):
     tags=['Каталог'],
     summary='Справочник категорий витрины',
     description=(
-        '**Назначение:** словарь типов объектов для форм и для фильтра каталога (`category`, `category_slug`).\n\n'
-        '**Доступ:** публично, без авторизации. Пагинации нет — отдаётся полный активный справочник '
-        '(сортировка: `sort_order`, затем название).\n\n'
-        '**Поля:** `id`, `name`, `slug`, `sort_order`. При создании/редактировании объекта в API передавайте '
-        '**`category_id`** = `id` из этого списка.\n\n'
-        '**Важно:** если **slug** = `land_plot`, в карточке объекта используется блок **`land_plot_details`**; '
-        'для всех остальных slug — общий блок **`residential_details`** (новостройки, вторичка, загород и т.д.).'
+        '**Назначение:** справочник категорий для форм.\n\n'
+        '**Доступ:** публично, без авторизации. Пагинации нет.\n\n'
+        '**Формат ответа:** список основных категорий (main), внутри — массив подкатегорий (sub).\n\n'
+        '**Фильтр:** query-параметр **`main_category`** = id основной категории. '
+        'Если передать — в ответе будет только выбранная основная категория и её подкатегории.'
     ),
-    responses={200: PropertyCategoryRefSerializer(many=True)},
+    parameters=[
+        OpenApiParameter(
+            name='main_category',
+            type=OpenApiTypes.INT,
+            required=False,
+            description='ID основной категории (main). В ответе вернётся только она и её подкатегории.',
+        ),
+    ],
+    responses={200: PropertyCategoryTreeSerializer(many=True)},
 )
 class PropertyCategoryListView(generics.ListAPIView):
     permission_classes = [AllowAny]
     authentication_classes = ()
-    serializer_class = PropertyCategoryRefSerializer
+    serializer_class = PropertyCategoryTreeSerializer
     pagination_class = None
-    queryset = PropertyCategory.objects.all().order_by('sort_order', 'name')
+
+    def get_queryset(self):
+        qs = (
+            PropertyCategory.objects.filter(parent__isnull=True)
+            .prefetch_related('subcategories')
+            .order_by('sort_order', 'name')
+        )
+        main_id = (self.request.query_params.get('main_category') or '').strip()
+        if main_id.isdigit():
+            qs = qs.filter(pk=int(main_id))
+        return qs
 
 
 @extend_schema(

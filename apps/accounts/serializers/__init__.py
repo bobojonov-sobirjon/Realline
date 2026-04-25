@@ -20,6 +20,7 @@ from apps.accounts.serializers.property_parts import (
     DistrictRefSerializer,
     HighwayRefSerializer,
     PropertyCategoryRefSerializer,
+    PropertyCategoryTreeSerializer,
     PropertyImageSerializer,
     PropertyTagSerializer,
 )
@@ -35,6 +36,7 @@ __all__ = (
     'DistrictRefSerializer',
     'HighwayRefSerializer',
     'PropertyCategoryRefSerializer',
+    'PropertyCategoryTreeSerializer',
     'PropertyImageSerializer',
     'PropertyListingUnitSerializer',
     'PropertyListingUnitSummaryRowSerializer',
