@@ -1,5 +1,13 @@
 {% extends "admin/base.html" %}
 {% block messages %}
+{% if admin_new_agent_requests_count %}
+<div class="alert alert-info alert-dismissible fade show" role="alert">
+    <i class="fas fa-bell me-1"></i>
+    Новые заявки агентов: <strong>{{ admin_new_agent_requests_count }}</strong>.
+    <a href="{% url 'admin:accounts_agentrequest_changelist' %}?status=new" class="alert-link">Открыть список</a>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% endif %}
 {% if admin_moderation_pending_count %}
 <div class="alert alert-warning alert-dismissible fade show" role="alert">
     <i class="fas fa-hourglass-half me-1"></i>

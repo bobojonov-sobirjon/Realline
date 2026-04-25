@@ -88,6 +88,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'config.context_processors.admin_moderation_pending',
+                'config.context_processors.admin_new_agent_requests',
             ],
         },
     },
