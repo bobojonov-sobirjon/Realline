@@ -154,6 +154,15 @@ class PropertyCategory(models.Model):
         unique=True,
         help_text=_('Латиница без пробелов: new_building, suburban, land_plot…'),
     )
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='subcategories',
+        verbose_name=_('родительская категория'),
+        help_text=_('Пусто — основная категория; заполнено — подкатегория (sub category).'),
+    )
     sort_order = models.PositiveSmallIntegerField(_('порядок'), default=0)
 
     class Meta:
@@ -163,6 +172,20 @@ class PropertyCategory(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class MainCategory(PropertyCategory):
+    class Meta:
+        proxy = True
+        verbose_name = _('основная категория')
+        verbose_name_plural = _('основные категории')
+
+
+class SubCategory(PropertyCategory):
+    class Meta:
+        proxy = True
+        verbose_name = _('подкатегория')
+        verbose_name_plural = _('подкатегории')
 
 
 class PropertyListing(models.Model):

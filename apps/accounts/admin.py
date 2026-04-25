@@ -10,6 +10,7 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse
 from django.utils.html import format_html
+from django.utils.text import slugify
 from django.contrib.sites.models import Site
 from django.contrib.auth.models import Group
 
@@ -22,8 +23,10 @@ from apps.accounts.models import (
     District,
     Highway,
     LandPlotListingDetails,
+    MainCategory,
     PropertyCategory,
     ResidentialListingDetails,
+    SubCategory,
     PropertyImage,
     PropertyListing,
     PropertyListingRejection,
@@ -435,12 +438,98 @@ def _detail_inline_class_for_category_slug(slug: str):
     return ResidentialListingDetailsInline
 
 
-@admin.register(PropertyCategory)
-class PropertyCategoryAdmin(admin.ModelAdmin):
+class _CategoryBaseAdmin(admin.ModelAdmin):
     list_display = ('name', 'slug', 'sort_order')
     list_editable = ('sort_order',)
     ordering = ('sort_order', 'name')
     search_fields = ('name', 'slug')
+
+    def _generate_unique_slug(self, obj):
+        """
+        Автогенерация "кода" (slug), чтобы админам не нужно было понимать этот термин.
+        Для кириллицы slugify может дать пустую строку — тогда используем случайный суффикс.
+        """
+        base = slugify((obj.name or '').strip())[:40].strip('-')
+        if not base:
+            base = 'category'
+        candidate = base
+        Model = obj.__class__
+        n = 0
+        while Model.objects.filter(slug=candidate).exclude(pk=obj.pk).exists():
+            n += 1
+            candidate = f'{base}-{n}'
+            if n > 50:
+                candidate = f'{base}-{secrets.token_hex(3)}'
+                break
+        return candidate
+
+
+@admin.register(MainCategory)
+class MainCategoryAdmin(_CategoryBaseAdmin):
+    """Основные категории: parent IS NULL."""
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(parent__isnull=True)
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        # В форме основной категории parent не нужен и не должен отображаться.
+        if 'parent' in form.base_fields:
+            form.base_fields.pop('parent', None)
+        # При добавлении админ не должен заполнять "код" — генерируем автоматически.
+        if obj is None and 'slug' in form.base_fields:
+            form.base_fields.pop('slug', None)
+        # При редактировании показываем slug только для просмотра (не редактируем руками).
+        if obj is not None and 'slug' in form.base_fields:
+            form.base_fields['slug'].disabled = True
+        return form
+
+    def save_model(self, request, obj, form, change):
+        obj.parent_id = None
+        if not (obj.slug or '').strip():
+            obj.slug = self._generate_unique_slug(obj)
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(SubCategory)
+class SubCategoryAdmin(_CategoryBaseAdmin):
+    """Подкатегории: parent IS NOT NULL."""
+
+    list_display = ('name', 'parent', 'slug', 'sort_order')
+    list_select_related = ('parent',)
+    list_filter = ('parent',)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(parent__isnull=False)
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        # При добавлении админ не должен заполнять "код" — генерируем автоматически.
+        if obj is None and 'slug' in form.base_fields:
+            form.base_fields.pop('slug', None)
+        # При редактировании показываем slug только для просмотра (не редактируем руками).
+        if obj is not None and 'slug' in form.base_fields:
+            form.base_fields['slug'].disabled = True
+        return form
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'parent':
+            kwargs['queryset'] = PropertyCategory.objects.filter(parent__isnull=True).order_by(
+                'sort_order', 'name'
+            )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def save_model(self, request, obj, form, change):
+        if not (obj.slug or '').strip():
+            obj.slug = self._generate_unique_slug(obj)
+        super().save_model(request, obj, form, change)
+
+
+# Старую регистрацию общей модели убираем, чтобы в меню были только 2 отдельных раздела.
+try:
+    admin.site.unregister(PropertyCategory)
+except admin.sites.NotRegistered:
+    pass
 
 
 @admin.register(District)

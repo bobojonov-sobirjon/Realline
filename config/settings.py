@@ -294,9 +294,15 @@ JAZZMIN_SETTINGS = {
         ],
         'Объекты и каталог': [
             {
-                'name': 'Категории объектов',
-                'url': 'admin:accounts_propertycategory_changelist',
+                'name': 'Основные категории',
+                'url': 'admin:accounts_maincategory_changelist',
                 'icon': 'fas fa-tags',
+                'permissions': ['accounts.view_propertycategory'],
+            },
+            {
+                'name': 'Подкатегории',
+                'url': 'admin:accounts_subcategory_changelist',
+                'icon': 'fas fa-tag',
                 'permissions': ['accounts.view_propertycategory'],
             },
             {
@@ -395,7 +401,8 @@ JAZZMIN_SETTINGS = {
         'accounts': 'fas fa-user-tie',
         'accounts.customuser': 'fas fa-user',
         'accounts.agentrequest': 'fas fa-inbox',
-        'accounts.propertycategory': 'fas fa-tags',
+        'accounts.maincategory': 'fas fa-tags',
+        'accounts.subcategory': 'fas fa-tag',
         'accounts.propertylisting': 'fas fa-building',
         'агенты — пользователи и заявки': 'fas fa-user-tie',
         'объекты и каталог': 'fas fa-th-large',
