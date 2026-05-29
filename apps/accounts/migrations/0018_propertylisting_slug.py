@@ -61,11 +61,10 @@ def _slug_base(name: str, code: str = '') -> str:
 
 def backfill_listing_slugs(apps, schema_editor):
     PropertyListing = apps.get_model('accounts', 'PropertyListing')
-    used = set()
+    used = set(PropertyListing.objects.exclude(slug='').values_list('slug', flat=True))
 
     for obj in PropertyListing.objects.all().order_by('pk'):
         if (obj.slug or '').strip():
-            used.add(obj.slug)
             continue
         base = _slug_base(obj.name, obj.code)
         candidate = base
@@ -82,34 +81,78 @@ def noop(apps, schema_editor):
     pass
 
 
+# Idempotent SQL: safe if a previous migrate run stopped halfway (column/index already exist).
+_ADD_SLUG_COLUMN = """
+ALTER TABLE accounts_propertylisting
+ADD COLUMN IF NOT EXISTS slug varchar(64) NOT NULL DEFAULT '';
+"""
+
+_ENSURE_SLUG_UNIQUE = """
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint c
+        JOIN pg_class t ON c.conrelid = t.oid
+        WHERE t.relname = 'accounts_propertylisting'
+          AND c.conname = 'accounts_propertylisting_slug_key'
+    ) THEN
+        ALTER TABLE accounts_propertylisting
+        ADD CONSTRAINT accounts_propertylisting_slug_key UNIQUE (slug);
+    END IF;
+END $$;
+"""
+
+# Django SlugField creates this pattern index on PostgreSQL; IF NOT EXISTS avoids DuplicateTable.
+_ENSURE_SLUG_LIKE_INDEX = """
+CREATE INDEX IF NOT EXISTS accounts_propertylisting_slug_9b014f79_like
+ON accounts_propertylisting (slug varchar_pattern_ops);
+"""
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ('accounts', '0017_merge_20260425_2233'),
     ]
 
     operations = [
-        migrations.AddField(
-            model_name='propertylisting',
-            name='slug',
-            field=models.SlugField(
-                blank=True,
-                default='',
-                help_text='Для URL витрины: /catalog/{slug}. Генерируется из названия (латиница). Пример: «Аструм» → astrum.',
-                max_length=64,
-                verbose_name='адрес в каталоге (slug)',
-            ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(sql=_ADD_SLUG_COLUMN, reverse_sql=migrations.RunSQL.noop),
+            ],
+            state_operations=[
+                migrations.AddField(
+                    model_name='propertylisting',
+                    name='slug',
+                    field=models.SlugField(
+                        blank=True,
+                        default='',
+                        help_text='Для URL витрины: /catalog/{slug}. Генерируется из названия (латиница). Пример: «Аструм» → astrum.',
+                        max_length=64,
+                        verbose_name='адрес в каталоге (slug)',
+                    ),
+                ),
+            ],
         ),
         migrations.RunPython(backfill_listing_slugs, noop),
-        migrations.AlterField(
-            model_name='propertylisting',
-            name='slug',
-            field=models.SlugField(
-                blank=True,
-                default='',
-                help_text='Для URL витрины: /catalog/{slug}. Генерируется из названия (латиница). Пример: «Аструм» → astrum.',
-                max_length=64,
-                unique=True,
-                verbose_name='адрес в каталоге (slug)',
-            ),
+        migrations.SeparateDatabaseAndState(
+            database_operations=[
+                migrations.RunSQL(sql=_ENSURE_SLUG_UNIQUE, reverse_sql=migrations.RunSQL.noop),
+                migrations.RunSQL(sql=_ENSURE_SLUG_LIKE_INDEX, reverse_sql=migrations.RunSQL.noop),
+            ],
+            state_operations=[
+                migrations.AlterField(
+                    model_name='propertylisting',
+                    name='slug',
+                    field=models.SlugField(
+                        blank=True,
+                        default='',
+                        help_text='Для URL витрины: /catalog/{slug}. Генерируется из названия (латиница). Пример: «Аструм» → astrum.',
+                        max_length=64,
+                        unique=True,
+                        verbose_name='адрес в каталоге (slug)',
+                    ),
+                ),
+            ],
         ),
     ]
