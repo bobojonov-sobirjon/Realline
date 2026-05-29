@@ -15,7 +15,7 @@ urlpatterns = [
         views.PropertyListingUnitListView.as_view(),
         name='property-catalog-units-list',
     ),
-    path('catalog/properties/<int:pk>/', views.PropertyCatalogDetailView.as_view(), name='property-catalog-detail'),
+    path('catalog/properties/<str:lookup>/', views.PropertyCatalogDetailView.as_view(), name='property-catalog-detail'),
     path('catalog/properties/', views.PropertyCatalogListView.as_view(), name='property-catalog'),
     path('catalog/categories/', views.PropertyCategoryListView.as_view(), name='catalog-categories'),
     path('catalog/districts/', views.DistrictListView.as_view(), name='catalog-districts'),
@@ -52,7 +52,7 @@ urlpatterns = [
         name='listing-rejection-notice-detail',
     ),
     path(
-        'properties/published/<int:pk>/',
+        'properties/published/<str:lookup>/',
         views.PropertyPublishedDetailView.as_view(),
         name='property-published-detail',
     ),

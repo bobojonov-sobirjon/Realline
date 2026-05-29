@@ -33,6 +33,19 @@ from apps.accounts.views.schemas import (
 )
 
 
+class _CatalogListingLookupMixin:
+    """Карточка каталога по id (37) или slug (astrum)."""
+
+    lookup_url_kwarg = 'lookup'
+
+    def get_object(self):
+        lookup = self.kwargs[self.lookup_url_kwarg]
+        qs = self.get_queryset()
+        if str(lookup).isdigit():
+            return get_object_or_404(qs, pk=int(lookup))
+        return get_object_or_404(qs, slug=lookup)
+
+
 @extend_schema(
     tags=['Каталог'],
     summary='Каталог объявлений (витрина)',
@@ -70,7 +83,9 @@ class PropertyCatalogListView(generics.ListAPIView):
     tags=['Каталог'],
     summary='Карточка объекта на витрине',
     description=(
-        '**Назначение:** одна карточка недвижимости для публичного сайта по числовому **id**.\n\n'
+        '**Назначение:** одна карточка недвижимости для публичного сайта.\n\n'
+        '**Путь:** `.../catalog/properties/{lookup}/` — вместо `{lookup}` передайте **slug** '
+        '(поле `slug` в списке каталога, например `astrum`) или числовой **id** (обратная совместимость).\n\n'
         '**Доступ:** публично; JWT **не обязателен**. Если передать Bearer-токен, в теле будут '
         '**`is_favourite`** и **`is_compare`** для текущего пользователя (как в списке каталога).\n\n'
         '**Статус:** только **«Опубликован»**. Объект на модерации, отклонённый или удалённый — **404**, '
@@ -78,16 +93,24 @@ class PropertyCatalogListView(generics.ListAPIView):
         'Структура ответа совпадает с элементом списка `GET .../catalog/properties/`: изображения, теги, '
         'район, категория, блоки `residential_details` / `land_plot_details` при наличии.'
     ),
+    parameters=[
+        OpenApiParameter(
+            name='lookup',
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.PATH,
+            required=True,
+            description='Slug объекта (рекомендуется) или числовой id.',
+        ),
+    ],
     responses={
         200: PropertyListingSerializer,
         404: OpenApiResponse(description='Нет в каталоге (не опубликован или не существует)'),
     },
 )
-class PropertyCatalogDetailView(generics.RetrieveAPIView):
+class PropertyCatalogDetailView(_CatalogListingLookupMixin, generics.RetrieveAPIView):
     permission_classes = [AllowAny]
     authentication_classes = [OptionalJWTAuthentication]
     serializer_class = PropertyListingSerializer
-    lookup_field = 'pk'
 
     def get_serializer_context(self):
         ctx = super().get_serializer_context()

@@ -587,6 +587,7 @@ class PropertyListingAdmin(admin.ModelAdmin):
     list_display = (
         'code',
         'name',
+        'slug',
         'category',
         'property_type',
         'status_display',
@@ -623,6 +624,7 @@ class PropertyListingAdmin(admin.ModelAdmin):
                 'fields': (
                     'code',
                     'name',
+                    'slug',
                     'agent',
                     'category',
                     'property_type',
@@ -703,7 +705,13 @@ class PropertyListingAdmin(admin.ModelAdmin):
         'highway__name',
         'category__name',
     )
-    readonly_fields = ('code', 'created_at', 'updated_at')
+    readonly_fields = ('code', 'slug', 'created_at', 'updated_at')
+
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        if obj is None and 'slug' in form.base_fields:
+            form.base_fields.pop('slug', None)
+        return form
 
     def get_inlines(self, request, obj=None):
         blocks = []

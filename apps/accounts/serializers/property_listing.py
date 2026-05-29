@@ -230,6 +230,7 @@ class PropertyListingSerializer(serializers.ModelSerializer):
         model = PropertyListing
         fields = (
             'id',
+            'slug',
             'code',
             'category',
             'property_type',
@@ -280,6 +281,7 @@ class PropertyListingSerializer(serializers.ModelSerializer):
         )
         read_only_fields = (
             'id',
+            'slug',
             'code',
             'status',
             'rejection_reason',

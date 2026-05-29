@@ -248,6 +248,17 @@ class PropertyListing(models.Model):
         ),
     )
     name = models.CharField(_('название'), max_length=500)
+    slug = models.SlugField(
+        _('адрес в каталоге (slug)'),
+        max_length=64,
+        unique=True,
+        blank=True,
+        default='',
+        help_text=_(
+            'Для URL витрины: /catalog/{slug}. Генерируется из названия (латиница). '
+            'Пример: «Аструм» → astrum.'
+        ),
+    )
     price = models.DecimalField(_('цена, ₽'), max_digits=15, decimal_places=2)
     settlement = models.CharField(_('населённый пункт'), max_length=255, blank=True)
     district = models.ForeignKey(
@@ -372,6 +383,15 @@ class PropertyListing(models.Model):
                 if not qs.exists():
                     break
                 self.code = self._generate_code()
+        if not (self.slug or '').strip():
+            from apps.accounts.utils.slug import generate_unique_listing_slug
+
+            self.slug = generate_unique_listing_slug(
+                self.__class__,
+                self.name,
+                self.code,
+                exclude_pk=self.pk,
+            )
         super().save(*args, **kwargs)
 
     @staticmethod
