@@ -91,6 +91,17 @@ class PropertyCatalogFilter(django_filters.FilterSet):
         lookup_expr='lte',
         help_text='Не дальше N км от МКАД (поле объекта distance_to_mkad_km ≤ N).',
     )
+    house_type = django_filters.CharFilter(
+        field_name='suburban_details__house_type',
+        help_text='Тип дома для дач/коттеджей: brick, gas_concrete, wood, frame, monolith, combined.',
+    )
+    external_finishing = django_filters.CharFilter(
+        field_name='suburban_details__external_finishing',
+        help_text=(
+            'Внешняя отделка для дач/коттеджей: facade_plaster, siding_panels, facade_tile, '
+            'brick_stone, wood_cladding.'
+        ),
+    )
     price_min = django_filters.NumberFilter(
         field_name='price',
         lookup_expr='gte',
@@ -156,6 +167,8 @@ class PropertyCatalogFilter(django_filters.FilterSet):
             'land_area_min',
             'land_area_max',
             'distance_to_mkad_max',
+            'house_type',
+            'external_finishing',
             'price_min',
             'price_max',
             'promo',

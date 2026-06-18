@@ -7,6 +7,7 @@ from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse
 from django.utils.html import format_html
@@ -15,6 +16,7 @@ from django.contrib.sites.models import Site
 from django.contrib.auth.models import Group
 
 
+from apps.accounts.category_kinds import SUBURBAN_CATEGORY_SLUGS, category_detail_kind
 from apps.accounts.forms import AgentProfileInlineForm, CreateAgentCabinetForm
 from apps.accounts.models import (
     AgentProfile,
@@ -26,6 +28,7 @@ from apps.accounts.models import (
     MainCategory,
     PropertyCategory,
     ResidentialListingDetails,
+    SuburbanListingDetails,
     SubCategory,
     PropertyImage,
     PropertyListing,
@@ -366,10 +369,8 @@ class ResidentialListingDetailsInline(admin.StackedInline):
     max_num = 1
     extra = 0
     can_delete = True
-    verbose_name = 'Жилая (новостройка / вторичка / загород / коттедж / дача)'
-    verbose_name_plural = (
-        'Блок «жилая недвижимость» (общий для всех категорий, кроме земельного участка)'
-    )
+    verbose_name = 'Жилая (новостройка / вторичка)'
+    verbose_name_plural = 'Блок «Жилая недвижимость» (новостройки, вторичка)'
     fieldsets = (
         (
             'Как в макете новостройки / ЖК',
@@ -405,6 +406,41 @@ class ResidentialListingDetailsInline(admin.StackedInline):
     )
 
 
+class SuburbanListingDetailsInline(admin.StackedInline):
+    model = SuburbanListingDetails
+    max_num = 1
+    extra = 0
+    can_delete = True
+    verbose_name = 'Загород (дача / коттедж)'
+    verbose_name_plural = 'Блок «Загородная недвижимость» (дачи, коттеджи)'
+    fieldsets = (
+        (
+            'Дом и отделка',
+            {
+                'fields': (
+                    'house_type',
+                    'external_finishing',
+                ),
+            },
+        ),
+        (
+            'Договор и локация',
+            {
+                'fields': (
+                    'contract_form',
+                    'payment_methods',
+                    'travel_time_note',
+                    'plot_location_text',
+                ),
+                'description': (
+                    'Площадь участка, шоссе, км от МКАД и адрес заполняются в блоках выше '
+                    '(«Адрес и карта», «Площади и дом»). Газ / электричество / вода — в «Коммуникации».'
+                ),
+            },
+        ),
+    )
+
+
 class LandPlotListingDetailsInline(admin.StackedInline):
     model = LandPlotListingDetails
     max_num = 1
@@ -431,8 +467,11 @@ _LAND_CATEGORY_SLUG = 'land_plot'
 
 
 def _detail_inline_class_for_category_slug(slug: str):
-    if slug == _LAND_CATEGORY_SLUG:
+    kind = category_detail_kind(slug)
+    if kind == 'land_plot':
         return LandPlotListingDetailsInline
+    if kind == 'suburban':
+        return SuburbanListingDetailsInline
     if not slug:
         return None
     return ResidentialListingDetailsInline
@@ -611,91 +650,147 @@ class PropertyListingAdmin(admin.ModelAdmin):
         else:
             css = 'badge rounded-pill bg-secondary'
         return format_html('<span class="{}">{}</span>', css, label)
-    fieldsets = (
-        (
-            'Карточка объекта',
-            {
-                'description': (
-                    'Выберите категорию и сохраните. Для «Земельные участки» — блок полей участка; '
-                    'для остальных категорий (новостройки, вторичка, загород, коттеджи, дачи, коммерция…) '
-                    '— общий блок «жилая недвижимость», как в макете новостройки. Тип объекта (legacy) '
-                    'подстраивается от категории.'
-                ),
-                'fields': (
-                    'code',
-                    'name',
-                    'slug',
-                    'agent',
-                    'category',
-                    'property_type',
-                    'price',
-                    'status',
-                    'is_actual_offer',
-                    'rejection_reason',
-                    'created_at',
-                    'updated_at',
-                ),
-            },
-        ),
-        ('Описание', {'fields': ('description',)}),
-        (
-            'Адрес и карта',
-            {
-                'fields': (
-                    'settlement',
-                    'district',
-                    'highway',
-                    'address',
-                    'latitude',
-                    'longitude',
-                    'distance_to_mkad_km',
-                ),
-            },
-        ),
-        (
-            'Площади и дом',
-            {
-                'fields': (
-                    'area',
-                    'land_area',
-                    'floors',
-                    'rooms',
-                    'bedrooms',
-                    'bathrooms',
-                    'year_built',
-                    'wall_material',
-                    'finishing',
-                ),
-            },
-        ),
-        (
-            'Инфраструктура посёлка',
-            {
-                'classes': ('collapse',),
-                'fields': (
-                    'has_asphalt_roads',
-                    'has_street_lighting',
-                    'has_guarded_territory',
-                    'near_shops',
-                    'near_school_kindergarten',
-                    'near_public_transport',
-                ),
-            },
-        ),
-        (
-            'Коммуникации',
-            {
-                'fields': (
-                    'electricity_supply',
-                    'water_supply',
-                    'sewage_type',
-                    'heating_type',
-                    'internet_connection',
-                    'communications',
-                ),
-            },
-        ),
-    )
+
+    @staticmethod
+    def _listing_category_slug(obj):
+        if not obj or not obj.category_id:
+            return ''
+        slug = getattr(obj.category, 'slug', None)
+        if slug:
+            return slug
+        return PropertyCategory.objects.filter(pk=obj.category_id).values_list('slug', flat=True).first() or ''
+
+    def get_fieldsets(self, request, obj=None):
+        slug = self._listing_category_slug(obj)
+        is_suburban = slug in SUBURBAN_CATEGORY_SLUGS
+        is_land = slug == _LAND_CATEGORY_SLUG
+
+        if is_suburban:
+            card_help = (
+                'Подкатегория «Дачи» или «Коттеджи». Сохраните объект — ниже появится блок '
+                '«Загородная недвижимость» (тип дома, внешняя отделка). '
+                'Застройщик и срок сдачи для загорода не используются.'
+            )
+        elif is_land:
+            card_help = (
+                'Категория «Земельные участки». Сохраните объект — ниже блок полей участка.'
+            )
+        else:
+            card_help = (
+                'Новостройки, вторичка и др. Сохраните объект — ниже блок «Жилая недвижимость».'
+            )
+
+        area_fields = (
+            'area',
+            'land_area',
+            'floors',
+            'rooms',
+            'bedrooms',
+            'bathrooms',
+            'year_built',
+            'wall_material',
+        )
+        if not is_suburban:
+            area_fields = area_fields + ('finishing',)
+
+        comm_fields = (
+            'gas_supply',
+            'electricity_supply',
+            'water_supply',
+            'sewage_type',
+            'heating_type',
+            'internet_connection',
+            'communications',
+        )
+        if is_suburban:
+            comm_description = 'Для загорода укажите газ, электричество и водоснабжение.'
+        else:
+            comm_description = None
+
+        comm_section = {
+            'fields': comm_fields,
+        }
+        if comm_description:
+            comm_section['description'] = comm_description
+
+        return (
+            (
+                'Карточка объекта',
+                {
+                    'description': card_help,
+                    'fields': (
+                        'code',
+                        'name',
+                        'slug',
+                        'agent',
+                        'category',
+                        'property_type',
+                        'price',
+                        'status',
+                        'is_actual_offer',
+                        'rejection_reason',
+                        'created_at',
+                        'updated_at',
+                    ),
+                },
+            ),
+            ('Описание', {'fields': ('description',)}),
+            (
+                'Адрес и карта',
+                {
+                    'description': (
+                        'Для загорода: шоссе, адрес и расстояние до МКАД отображаются в карточке на сайте.'
+                        if is_suburban
+                        else None
+                    ),
+                    'fields': (
+                        'settlement',
+                        'district',
+                        'highway',
+                        'address',
+                        'latitude',
+                        'longitude',
+                        'distance_to_mkad_km',
+                    ),
+                },
+            ),
+            (
+                'Площади и дом',
+                {
+                    'description': (
+                        'Площадь участка (сот.) — для дач и коттеджей обязательно для витрины.'
+                        if is_suburban
+                        else None
+                    ),
+                    'fields': area_fields,
+                },
+            ),
+            (
+                'Инфраструктура посёлка',
+                {
+                    'classes': ('collapse',),
+                    'fields': (
+                        'has_asphalt_roads',
+                        'has_street_lighting',
+                        'has_guarded_territory',
+                        'near_shops',
+                        'near_school_kindergarten',
+                        'near_public_transport',
+                    ),
+                },
+            ),
+            ('Коммуникации', comm_section),
+        )
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'category':
+            kwargs['queryset'] = (
+                PropertyCategory.objects.annotate(child_count=Count('subcategories'))
+                .filter(child_count=0)
+                .order_by('sort_order', 'name')
+            )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
     search_fields = (
         'code',
         'name',
@@ -715,19 +810,16 @@ class PropertyListingAdmin(admin.ModelAdmin):
 
     def get_inlines(self, request, obj=None):
         blocks = []
+        slug = self._listing_category_slug(obj) if obj else ''
         if obj and obj.category_id:
-            slug = getattr(obj.category, 'slug', None)
-            if not slug:
-                slug = PropertyCategory.objects.filter(pk=obj.category_id).values_list('slug', flat=True).first()
-            cls = _detail_inline_class_for_category_slug(slug or '')
+            cls = _detail_inline_class_for_category_slug(slug)
             if cls:
                 blocks.append(cls)
-        return blocks + [
-            PropertyTagInline,
-            PropertyImageInline,
-            PropertyListingUnitInline,
-            PropertyListingRejectionInline,
-        ]
+        tail = [PropertyTagInline, PropertyImageInline]
+        if category_detail_kind(slug) == 'residential':
+            tail.append(PropertyListingUnitInline)
+        tail.append(PropertyListingRejectionInline)
+        return blocks + tail
 
     def get_urls(self):
         return [

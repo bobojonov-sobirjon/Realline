@@ -73,6 +73,8 @@ class PropertyCatalogListView(generics.ListAPIView):
                 'tags',
                 'units',
                 'residential_details',
+                'suburban_details',
+                'suburban_details__listing__highway',
                 'land_plot_details',
             )
             .order_by('-created_at')
@@ -126,6 +128,8 @@ class PropertyCatalogDetailView(_CatalogListingLookupMixin, generics.RetrieveAPI
                 'tags',
                 'units',
                 'residential_details',
+                'suburban_details',
+                'suburban_details__listing__highway',
                 'land_plot_details',
             )
         )

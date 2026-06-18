@@ -71,6 +71,7 @@ class PropertyListingListCreateView(generics.ListCreateAPIView):
                 'tags',
                 'units',
                 'residential_details',
+                'suburban_details',
                 'land_plot_details',
             )
         )
@@ -161,6 +162,7 @@ class PropertyListingDetailView(generics.RetrieveUpdateDestroyAPIView):
                 'tags',
                 'units',
                 'residential_details',
+                'suburban_details',
                 'land_plot_details',
             )
         )

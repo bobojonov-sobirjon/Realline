@@ -327,6 +327,7 @@ class PropertyListing(models.Model):
     near_school_kindergarten = models.BooleanField(_('школа и детский сад рядом'), default=False)
     near_public_transport = models.BooleanField(_('остановка ОТ рядом'), default=False)
     electricity_supply = models.CharField(_('электричество'), max_length=255, blank=True)
+    gas_supply = models.CharField(_('газ'), max_length=255, blank=True)
     water_supply = models.CharField(_('водоснабжение'), max_length=255, blank=True)
     sewage_type = models.CharField(_('канализация'), max_length=255, blank=True)
     heating_type = models.CharField(_('отопление'), max_length=255, blank=True)
@@ -427,7 +428,7 @@ class PropertyListingRejection(models.Model):
 
 
 class ResidentialListingDetails(models.Model):
-    """Общий блок карточки для новостроек, вторички, загорода, коттеджей, дач (как в макете ЖК)."""
+    """Блок карточки для новостроек и вторички (макет ЖК). Дачи/коттеджи — SuburbanListingDetails."""
 
     listing = models.OneToOneField(
         PropertyListing,
@@ -474,6 +475,64 @@ class ResidentialListingDetails(models.Model):
 
     def __str__(self):
         return f'{self.listing.code}: жилая'
+
+
+class SuburbanListingDetails(models.Model):
+    """Карточка загородной недвижимости: дачи и коттеджи."""
+
+    class HouseType(models.TextChoices):
+        BRICK = 'brick', _('Кирпичный')
+        GAS_CONCRETE = 'gas_concrete', _('Газобетон / пеноблок')
+        WOOD = 'wood', _('Деревянный')
+        FRAME = 'frame', _('Каркасный')
+        MONOLITH = 'monolith', _('Монолитный')
+        COMBINED = 'combined', _('Комбинированный')
+
+    class ExternalFinishing(models.TextChoices):
+        PLASTER = 'facade_plaster', _('Фасадная штукатурка')
+        SIDING = 'siding_panels', _('Сайдинг и панели')
+        TILE = 'facade_tile', _('Фасадная плитка')
+        BRICK_STONE = 'brick_stone', _('Кирпич / камень')
+        WOOD_CLADDING = 'wood_cladding', _('Облицовка дерево')
+
+    listing = models.OneToOneField(
+        PropertyListing,
+        on_delete=models.CASCADE,
+        related_name='suburban_details',
+        verbose_name=_('объект'),
+    )
+    house_type = models.CharField(
+        _('тип дома'),
+        max_length=32,
+        choices=HouseType.choices,
+        blank=True,
+    )
+    external_finishing = models.CharField(
+        _('внешняя отделка'),
+        max_length=32,
+        choices=ExternalFinishing.choices,
+        blank=True,
+    )
+    contract_form = models.CharField(_('форма договора'), max_length=128, blank=True)
+    payment_methods = models.TextField(_('способы оплаты'), blank=True)
+    travel_time_note = models.CharField(
+        _('подпись про дорогу до города'),
+        max_length=255,
+        blank=True,
+        help_text=_('Например: До Москвы — 25 мин на автомобиле'),
+    )
+    plot_location_text = models.TextField(
+        _('участок и локация (доп. текст)'),
+        blank=True,
+        help_text=_('Дополнение к полям участка, шоссе, МКАД и адресу в карточке объекта.'),
+    )
+
+    class Meta:
+        verbose_name = _('детали: загород (дача / коттедж)')
+        verbose_name_plural = _('блок «Загородная недвижимость»')
+
+    def __str__(self):
+        return f'{self.listing.code}: загород'
 
 
 class LandPlotListingDetails(models.Model):

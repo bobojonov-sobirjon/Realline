@@ -3,6 +3,7 @@ import json
 from django.core.files.base import ContentFile
 from rest_framework import serializers
 
+from apps.accounts.category_kinds import category_detail_kind
 from apps.accounts.filters import (
     CATALOG_TAG_FOREST,
     CATALOG_TAG_PROMO,
@@ -18,6 +19,7 @@ from apps.accounts.models import (
     PropertyListing,
     PropertyListingUnit,
     ResidentialListingDetails,
+    SuburbanListingDetails,
     UserCompareListing,
     UserFavoriteListing,
 )
@@ -32,7 +34,63 @@ from apps.accounts.serializers.tags_parsing import coalesce_multipart_tags, norm
 from apps.accounts.utils.property_tags import sync_property_tags
 
 _NOT_PROVIDED = object()
-_LAND_CATEGORY_SLUG = 'land_plot'
+
+
+def _category_slug_for_listing(listing) -> str:
+    if not listing.category_id:
+        return ''
+    return (
+        PropertyCategory.objects.filter(pk=listing.category_id)
+        .values_list('slug', flat=True)
+        .first()
+        or ''
+    )
+
+
+def _sync_category_detail_blocks(
+    listing,
+    residential,
+    land,
+    suburban,
+    *,
+    merge_details: bool,
+):
+    if not listing.category_id:
+        return
+    slug = _category_slug_for_listing(listing)
+    kind = category_detail_kind(slug)
+    if kind == 'land_plot':
+        ResidentialListingDetails.objects.filter(listing=listing).delete()
+        SuburbanListingDetails.objects.filter(listing=listing).delete()
+        if land is not _NOT_PROVIDED:
+            _persist_detail_row(LandPlotListingDetails, listing, land, merge=merge_details)
+    elif kind == 'suburban':
+        ResidentialListingDetails.objects.filter(listing=listing).delete()
+        LandPlotListingDetails.objects.filter(listing=listing).delete()
+        if suburban is not _NOT_PROVIDED:
+            _persist_detail_row(SuburbanListingDetails, listing, suburban, merge=merge_details)
+    else:
+        LandPlotListingDetails.objects.filter(listing=listing).delete()
+        SuburbanListingDetails.objects.filter(listing=listing).delete()
+        if residential is not _NOT_PROVIDED:
+            _persist_detail_row(ResidentialListingDetails, listing, residential, merge=merge_details)
+
+
+def _prune_detail_blocks_for_category(listing):
+    """После смены категории убрать чужие блоки."""
+    if not listing.category_id:
+        return
+    slug = _category_slug_for_listing(listing)
+    kind = category_detail_kind(slug)
+    if kind == 'land_plot':
+        ResidentialListingDetails.objects.filter(listing=listing).delete()
+        SuburbanListingDetails.objects.filter(listing=listing).delete()
+    elif kind == 'suburban':
+        ResidentialListingDetails.objects.filter(listing=listing).delete()
+        LandPlotListingDetails.objects.filter(listing=listing).delete()
+    else:
+        LandPlotListingDetails.objects.filter(listing=listing).delete()
+        SuburbanListingDetails.objects.filter(listing=listing).delete()
 
 
 def _materialize_image_upload(upload):
@@ -95,45 +153,6 @@ def _persist_detail_row(model_cls, listing, patch: dict | None, *, merge: bool):
     model_cls.objects.update_or_create(listing=listing, defaults=defaults)
 
 
-def _sync_category_detail_blocks(
-    listing,
-    residential,
-    land,
-    *,
-    merge_details: bool,
-):
-    if not listing.category_id:
-        return
-    slug = (
-        PropertyCategory.objects.filter(pk=listing.category_id)
-        .values_list('slug', flat=True)
-        .first()
-    )
-    if slug == _LAND_CATEGORY_SLUG:
-        ResidentialListingDetails.objects.filter(listing=listing).delete()
-        if land is not _NOT_PROVIDED:
-            _persist_detail_row(LandPlotListingDetails, listing, land, merge=merge_details)
-    else:
-        LandPlotListingDetails.objects.filter(listing=listing).delete()
-        if residential is not _NOT_PROVIDED:
-            _persist_detail_row(ResidentialListingDetails, listing, residential, merge=merge_details)
-
-
-def _prune_detail_blocks_for_category(listing):
-    """После смены категории убрать чужой блок (жилая ↔ участок)."""
-    if not listing.category_id:
-        return
-    slug = (
-        PropertyCategory.objects.filter(pk=listing.category_id)
-        .values_list('slug', flat=True)
-        .first()
-    )
-    if slug == _LAND_CATEGORY_SLUG:
-        ResidentialListingDetails.objects.filter(listing=listing).delete()
-    else:
-        LandPlotListingDetails.objects.filter(listing=listing).delete()
-
-
 class ResidentialListingDetailsSerializer(serializers.ModelSerializer):
     class Meta:
         model = ResidentialListingDetails
@@ -144,6 +163,37 @@ class LandPlotListingDetailsSerializer(serializers.ModelSerializer):
     class Meta:
         model = LandPlotListingDetails
         exclude = ('id', 'listing')
+
+
+class SuburbanPlotLocationSerializer(serializers.Serializer):
+    land_area = serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
+    highway = HighwayRefSerializer(allow_null=True)
+    distance_to_mkad_km = serializers.DecimalField(max_digits=6, decimal_places=1, allow_null=True)
+    address = serializers.CharField(allow_blank=True)
+
+
+class SuburbanListingDetailsSerializer(serializers.ModelSerializer):
+    house_type_display = serializers.CharField(source='get_house_type_display', read_only=True)
+    external_finishing_display = serializers.CharField(
+        source='get_external_finishing_display',
+        read_only=True,
+    )
+    plot_location = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SuburbanListingDetails
+        exclude = ('id', 'listing')
+
+    def get_plot_location(self, obj):
+        listing = obj.listing
+        return SuburbanPlotLocationSerializer(
+            {
+                'land_area': listing.land_area,
+                'highway': listing.highway,
+                'distance_to_mkad_km': listing.distance_to_mkad_km,
+                'address': listing.address or '',
+            }
+        ).data
 
 
 def listing_favorite_compare_context(request) -> dict:
@@ -202,6 +252,7 @@ class PropertyListingSerializer(serializers.ModelSerializer):
     category = PropertyCategoryRefSerializer(read_only=True, allow_null=True)
     residential_details = ResidentialListingDetailsSerializer(read_only=True, allow_null=True)
     land_plot_details = LandPlotListingDetailsSerializer(read_only=True, allow_null=True)
+    suburban_details = SuburbanListingDetailsSerializer(read_only=True, allow_null=True)
     is_favourite = serializers.SerializerMethodField()
     is_compare = serializers.SerializerMethodField()
     listing_units = PropertyListingUnitSerializer(many=True, read_only=True, source='units')
@@ -258,6 +309,7 @@ class PropertyListingSerializer(serializers.ModelSerializer):
             'year_built',
             'wall_material',
             'finishing',
+            'gas_supply',
             'electricity_supply',
             'water_supply',
             'sewage_type',
@@ -277,6 +329,7 @@ class PropertyListingSerializer(serializers.ModelSerializer):
             'is_compare',
             'residential_details',
             'land_plot_details',
+            'suburban_details',
             'listing_units',
         )
         read_only_fields = (
@@ -297,6 +350,7 @@ class PropertyListingSerializer(serializers.ModelSerializer):
             'category',
             'residential_details',
             'land_plot_details',
+            'suburban_details',
             'is_actual_offer',
             'listing_units',
         )
@@ -322,13 +376,19 @@ class PropertyListingWriteSerializer(serializers.ModelSerializer):
         source='category',
         required=True,
         label='(Категория витрины) category_id',
-        help_text='ID из `GET /api/v1/accounts/catalog/categories/`. Slug `land_plot` — поля в `land_plot_details`, иначе — в `residential_details`.',
+        help_text='ID из `GET /api/v1/accounts/catalog/categories/`. Дачи/коттеджи — `suburban_details`, участок — `land_plot_details`, новостройка — `residential_details`.',
     )
     residential_details = ResidentialListingDetailsSerializer(
         required=False,
         allow_null=True,
         label='(Блок жилая / новостройка) residential_details',
-        help_text='Объект JSON: застройщик, срок сдачи, класс жилья и т.д. Не для категории земельного участка.',
+        help_text='Объект JSON: застройщик, срок сдачи, класс жилья и т.д. Только для новостроек и вторички.',
+    )
+    suburban_details = SuburbanListingDetailsSerializer(
+        required=False,
+        allow_null=True,
+        label='(Блок загород) suburban_details',
+        help_text='Объект JSON: тип дома, внешняя отделка и т.д. Только для категорий «Дачи» и «Коттеджи».',
     )
     land_plot_details = LandPlotListingDetailsSerializer(
         required=False,
@@ -427,6 +487,7 @@ class PropertyListingWriteSerializer(serializers.ModelSerializer):
             'year_built',
             'wall_material',
             'finishing',
+            'gas_supply',
             'electricity_supply',
             'water_supply',
             'sewage_type',
@@ -437,6 +498,7 @@ class PropertyListingWriteSerializer(serializers.ModelSerializer):
             'tags',
             'images',
             'residential_details',
+            'suburban_details',
             'land_plot_details',
         )
         extra_kwargs = {
@@ -481,6 +543,7 @@ class PropertyListingWriteSerializer(serializers.ModelSerializer):
             'year_built': {'label': '(Год постройки) year_built'},
             'wall_material': {'label': '(Материал стен) wall_material'},
             'finishing': {'label': '(Отделка) finishing'},
+            'gas_supply': {'label': '(Газ) gas_supply'},
             'electricity_supply': {'label': '(Электричество) electricity_supply'},
             'water_supply': {'label': '(Водоснабжение) water_supply'},
             'sewage_type': {'label': '(Канализация) sewage_type'},
@@ -497,7 +560,7 @@ class PropertyListingWriteSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         mut = data.copy() if hasattr(data, 'copy') else dict(data)
 
-        for nest_key in ('residential_details', 'land_plot_details'):
+        for nest_key in ('residential_details', 'suburban_details', 'land_plot_details'):
             if nest_key not in mut:
                 continue
             raw = mut.get(nest_key)
@@ -549,6 +612,7 @@ class PropertyListingWriteSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         residential = validated_data.pop('residential_details', _NOT_PROVIDED)
+        suburban = validated_data.pop('suburban_details', _NOT_PROVIDED)
         land = validated_data.pop('land_plot_details', _NOT_PROVIDED)
         images = validated_data.pop('images', [])
         tags_items = validated_data.pop('tags', None)
@@ -563,12 +627,14 @@ class PropertyListingWriteSerializer(serializers.ModelSerializer):
             obj,
             residential,
             land,
+            suburban,
             merge_details=False,
         )
         return obj
 
     def update(self, instance, validated_data):
         residential = validated_data.pop('residential_details', _NOT_PROVIDED)
+        suburban = validated_data.pop('suburban_details', _NOT_PROVIDED)
         land = validated_data.pop('land_plot_details', _NOT_PROVIDED)
         category_changed = 'category' in validated_data
         images = validated_data.pop('images', None)
@@ -580,11 +646,12 @@ class PropertyListingWriteSerializer(serializers.ModelSerializer):
             instance.images.all().delete()
             for i, img in enumerate(images):
                 PropertyImage.objects.create(property=obj, image=img, sort_order=i)
-        if residential is not _NOT_PROVIDED or land is not _NOT_PROVIDED:
+        if residential is not _NOT_PROVIDED or suburban is not _NOT_PROVIDED or land is not _NOT_PROVIDED:
             _sync_category_detail_blocks(
                 obj,
                 residential,
                 land,
+                suburban,
                 merge_details=True,
             )
         elif category_changed:
