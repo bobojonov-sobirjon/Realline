@@ -607,6 +607,21 @@ class PropertyListingAdminForm(forms.ModelForm):
                     ),
                 }
             )
+        region = cleaned_data.get('region') or District.Region.MOSCOW
+        district = cleaned_data.get('district')
+        highway = cleaned_data.get('highway')
+        if district and district.region != region:
+            raise ValidationError(
+                {'district': 'Район не относится к выбранному региону (Москва / СПб).'}
+            )
+        if highway and highway.region != region:
+            raise ValidationError(
+                {'highway': 'Шоссе не относится к выбранному региону (Москва / СПб).'}
+            )
+        if district:
+            cleaned_data['region'] = district.region
+        elif highway:
+            cleaned_data['region'] = highway.region
         return cleaned_data
 
 
@@ -628,13 +643,14 @@ class PropertyListingAdmin(admin.ModelAdmin):
         'name',
         'slug',
         'category',
+        'region',
         'property_type',
         'status_display',
         'agent',
         'price',
         'created_at',
     )
-    list_filter = ('status', 'category', 'property_type', 'is_actual_offer', 'created_at')
+    list_filter = ('status', 'region', 'category', 'property_type', 'is_actual_offer', 'created_at')
     list_select_related = ('agent', 'category')
 
     @admin.display(description='Статус', ordering='status')
@@ -744,6 +760,7 @@ class PropertyListingAdmin(admin.ModelAdmin):
                         else None
                     ),
                     'fields': (
+                        'region',
                         'settlement',
                         'district',
                         'highway',
@@ -789,6 +806,22 @@ class PropertyListingAdmin(admin.ModelAdmin):
                 .filter(child_count=0)
                 .order_by('sort_order', 'name')
             )
+        if db_field.name in ('district', 'highway'):
+            region = District.Region.MOSCOW
+            obj_id = request.resolver_match.kwargs.get('object_id') if request.resolver_match else None
+            if obj_id:
+                saved = (
+                    PropertyListing.objects.filter(pk=obj_id)
+                    .values_list('region', flat=True)
+                    .first()
+                )
+                if saved:
+                    region = saved
+            elif request.method == 'POST':
+                posted = (request.POST.get('region') or '').strip()
+                if posted in (District.Region.MOSCOW, District.Region.SAINT_PETERSBURG):
+                    region = posted
+            kwargs['queryset'] = db_field.related_model.objects.filter(region=region).order_by('name')
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
     search_fields = (

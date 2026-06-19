@@ -285,6 +285,7 @@ class PropertyListingSerializer(serializers.ModelSerializer):
             'code',
             'category',
             'property_type',
+            'region',
             'name',
             'price',
             'settlement',
@@ -462,6 +463,7 @@ class PropertyListingWriteSerializer(serializers.ModelSerializer):
         model = PropertyListing
         fields = (
             'category_id',
+            'region',
             'property_type',
             'name',
             'price',
@@ -513,6 +515,10 @@ class PropertyListingWriteSerializer(serializers.ModelSerializer):
             'price': {
                 'label': '(Цена, ₽) price',
                 'help_text': 'Цена в рублях (число).',
+            },
+            'region': {
+                'label': '(Регион витрины) region',
+                'help_text': '`moscow` или `saint_petersburg` — город, в котором объект виден на сайте.',
             },
             'settlement': {'label': '(Населённый пункт) settlement'},
             'address': {
@@ -609,6 +615,31 @@ class PropertyListingWriteSerializer(serializers.ModelSerializer):
         if imgs:
             ret['images'] = [_materialize_image_upload(f) for f in imgs]
         return ret
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        region = attrs.get('region')
+        if region is None and self.instance is not None:
+            region = self.instance.region
+        district = attrs.get('district')
+        if district is None and self.instance is not None:
+            district = self.instance.district
+        highway = attrs.get('highway')
+        if highway is None and self.instance is not None:
+            highway = self.instance.highway
+        if district and region and district.region != region:
+            raise serializers.ValidationError(
+                {'district_id': 'Район не относится к выбранному региону витрины.'}
+            )
+        if highway and region and highway.region != region:
+            raise serializers.ValidationError(
+                {'highway_id': 'Шоссе не относится к выбранному региону витрины.'}
+            )
+        if district and not region:
+            attrs['region'] = district.region
+        elif highway and not region:
+            attrs['region'] = highway.region
+        return attrs
 
     def create(self, validated_data):
         residential = validated_data.pop('residential_details', _NOT_PROVIDED)

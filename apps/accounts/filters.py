@@ -1,7 +1,8 @@
 import django_filters
 from django.db.models import Q
 
-from apps.accounts.models import PropertyListing, PropertyListingUnit
+from apps.accounts.models import District, PropertyListing, PropertyListingUnit
+from apps.accounts.utils.region import normalize_listing_region
 
 # Имена тегов для чипов каталога (должны совпадать с tag_name у объявления).
 CATALOG_TAG_PROMO = 'Акция'
@@ -65,6 +66,21 @@ class PropertyCatalogFilter(django_filters.FilterSet):
     highway = django_filters.NumberFilter(
         field_name='highway_id',
         help_text='ID шоссе из GET /catalog/highways/.',
+    )
+    region = django_filters.CharFilter(
+        method='filter_region',
+        help_text=(
+            'Город витрины: `moscow` или `saint_petersburg` (также `saint-petersburg`, `spb`). '
+            'Соответствует полю «Регион витрины» в админке и выбору города на сайте.'
+        ),
+    )
+    site_region_slug = django_filters.CharFilter(
+        method='filter_region',
+        help_text='Алиас: slug региона с сайта (`moscow`, `saint-petersburg` из GET /api/v1/site/regions/).',
+    )
+    country = django_filters.CharFilter(
+        method='filter_region',
+        help_text='Legacy-алиас для `region` (как на справочниках районов).',
     )
     area_min = django_filters.NumberFilter(
         field_name='area',
@@ -162,6 +178,9 @@ class PropertyCatalogFilter(django_filters.FilterSet):
             'property_type',
             'district',
             'highway',
+            'region',
+            'site_region_slug',
+            'country',
             'area_min',
             'area_max',
             'land_area_min',
@@ -183,6 +202,12 @@ class PropertyCatalogFilter(django_filters.FilterSet):
             'near_public_transport',
             'actual_offers',
         )
+
+    def filter_region(self, queryset, name, value):
+        region = normalize_listing_region(value)
+        if not region:
+            return queryset
+        return queryset.filter(region=region)
 
     def filter_promo(self, queryset, name, value):
         if value:

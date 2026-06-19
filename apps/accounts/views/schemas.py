@@ -68,6 +68,8 @@ _CATALOG_DESCRIPTION = (
     'Обычно совпадает с категорией, но может отличаться на старых данных.\n'
     '- **`district`** — **id** района из `GET .../catalog/districts/`.\n'
     '- **`highway`** — **id** шоссе из `GET .../catalog/highways/`.\n'
+    '- **`region`** — город витрины: `moscow` или `saint_petersburg` (объект виден только при выборе этого города на сайте). '
+    'Алиасы: `country`, `site_region_slug`, slug региона с `GET /api/v1/site/regions/` (`saint-petersburg`, `spb`).\n'
     '- **`area_min`**, **`area_max`** — диапазон площади дома/объекта в **м²** (поле `area` объекта ≥ min и/или ≤ max).\n'
     '- **`land_area_min`**, **`land_area_max`** — диапазон площади участка в **сотках**.\n'
     '- **`distance_to_mkad_max`** — не дальше указанного числа **км** от МКАД: `distance_to_mkad_km ≤ значение` '

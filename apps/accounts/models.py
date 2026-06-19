@@ -260,6 +260,16 @@ class PropertyListing(models.Model):
         ),
     )
     price = models.DecimalField(_('цена, ₽'), max_digits=15, decimal_places=2)
+    region = models.CharField(
+        _('регион витрины'),
+        max_length=32,
+        choices=District.Region.choices,
+        default=District.Region.MOSCOW,
+        db_index=True,
+        help_text=_(
+            'Москва или Санкт-Петербург. На сайте объект показывается только при выборе этого города.'
+        ),
+    )
     settlement = models.CharField(_('населённый пункт'), max_length=255, blank=True)
     district = models.ForeignKey(
         District,
@@ -393,6 +403,22 @@ class PropertyListing(models.Model):
                 self.code,
                 exclude_pk=self.pk,
             )
+        if self.district_id:
+            district_region = (
+                District.objects.filter(pk=self.district_id)
+                .values_list('region', flat=True)
+                .first()
+            )
+            if district_region:
+                self.region = district_region
+        elif self.highway_id:
+            highway_region = (
+                Highway.objects.filter(pk=self.highway_id)
+                .values_list('region', flat=True)
+                .first()
+            )
+            if highway_region:
+                self.region = highway_region
         super().save(*args, **kwargs)
 
     @staticmethod
