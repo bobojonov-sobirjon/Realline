@@ -1,0 +1,24 @@
+﻿OK {} count 0 sample None
+OK {'rooms': [0, 1, 2, 3, 4, 22, 23, 24, 25]} count 0 sample None
+OK {'price_from': 0, 'price_to': 999999999} count 0 sample None
+OK {'status': 1} count 0 sample None
+OK {'type': 1} count 0 sample None
+OK {'object_type': 1} count 0 sample None
+OK {'is_suite': 0} count 0 sample None
+OK {'deadline_key': 'all'} count 0 sample None
+OK {'sort': 'price'} count 0 sample None
+OK {'sort': 'name'} count 0 sample None
+OK {'sort_type': 'asc'} count 0 sample None
+OK {'text': '└ёЄЁєь'} count 0 sample None
+OK {'query': '└ёЄЁєь'} count 0 sample None
+POST 404 <!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Error</title>
+</head>
+<body>
+<pre>Cannot POST /blocks/search</pre>
+</body>
+</html>
+

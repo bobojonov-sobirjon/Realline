@@ -1,0 +1,1 @@
+!function(){var t=document.currentScript.getAttribute("cdnPublicHost");window.env||document.write("<script src={`${CDN_PUBLIC_HOST}/env/env.trend-stage.js`}><\/script>"),window.CDN_PUBLIC_HOST=t}();

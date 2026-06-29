@@ -154,6 +154,21 @@ ehthumbs.db
 Thumbs.db
 
 # Project specific
+data/trendagent_export/
+data/auth_probe*.txt
+data/auth_probe*.json
+data/api_probe*.txt
+data/search_*.json
+data/block_*.json
+data/apts_*.json
+data/spb_*.json
+data/login_response.json
+data/trendagent_env.js
+data/trend_tech_env.js
+data/*_bootstrap.js
+data/*_page.html
+data/*_config.js
+data/*_oauth.html
 .env
 .env.local
 .env.development.local
