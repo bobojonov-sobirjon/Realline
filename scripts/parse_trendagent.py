@@ -41,6 +41,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 TARGETS_FILE = SCRIPT_DIR / 'trendagent_targets.json'
 DEFAULT_OUTPUT = Path(__file__).resolve().parents[1] / 'data' / 'trendagent_export'
 PAGE_SIZE = 100
+MAX_RETRIES = 5
+RETRY_DELAY = 3.0
 
 
 class TrendAgentClient:
@@ -74,12 +76,22 @@ class TrendAgentClient:
     def _get(self, path: str, *, city_id: str, params: dict | None = None, timeout: int = 120) -> dict:
         p = {'city': city_id, **(params or {})}
         url = f'{API_BASE}{path}'
-        r = self.session.get(url, params=p, timeout=timeout)
-        if r.status_code == 401:
-            self.login()
-            r = self.session.get(url, params=p, timeout=timeout)
-        r.raise_for_status()
-        return r.json()
+        last_exc: Exception | None = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                r = self.session.get(url, params=p, timeout=timeout)
+                if r.status_code == 401:
+                    self.login()
+                    r = self.session.get(url, params=p, timeout=timeout)
+                r.raise_for_status()
+                return r.json()
+            except requests.RequestException as exc:
+                last_exc = exc
+                if attempt + 1 < MAX_RETRIES:
+                    wait = RETRY_DELAY * (attempt + 1)
+                    print(f'  ! API retry {attempt + 1}/{MAX_RETRIES} ({exc}); sleep {wait:.0f}s')
+                    time.sleep(wait)
+        raise last_exc  # type: ignore[misc]
 
     def fetch_blocks_map(self, city_id: str) -> list[dict]:
         data = self._get('/blocks/search', city_id=city_id, params={'show_type': 'map'}, timeout=180)
@@ -227,15 +239,20 @@ def collect_image_urls(block: dict, apartments: list[dict]) -> list[str]:
 
 
 def download_file(session: requests.Session, url: str, dest: Path) -> bool:
-    try:
-        r = session.get(url, timeout=120)
-        r.raise_for_status()
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(r.content)
-        return True
-    except requests.RequestException as exc:
-        print(f'  ! не скачано {url}: {exc}')
-        return False
+    for attempt in range(MAX_RETRIES):
+        try:
+            r = session.get(url, timeout=120)
+            r.raise_for_status()
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(r.content)
+            return True
+        except requests.RequestException as exc:
+            if attempt + 1 < MAX_RETRIES:
+                time.sleep(RETRY_DELAY * (attempt + 1))
+                continue
+            print(f'  ! не скачано {url}: {exc}')
+            return False
+    return False
 
 
 def normalize_apartment(apt: dict) -> dict:
@@ -341,9 +358,18 @@ def parse_complex(
     output_root: Path,
     list_index: dict[str, dict] | None = None,
     folder: str | None = None,
+    skip_existing: bool = False,
 ) -> dict | None:
     guid = map_item.get('guid') or slugify(map_item.get('name') or 'complex')
     name = map_item.get('name') or guid
+    out_dir = output_root / region / slugify(guid)
+    if skip_existing and (out_dir / 'summary.json').is_file():
+        print(f'\n=== {name} ({guid}) === skip (уже есть)')
+        try:
+            return json.loads((out_dir / 'summary.json').read_text(encoding='utf-8'))
+        except json.JSONDecodeError:
+            pass
+
     print(f'\n=== {name} ({guid}) ===')
 
     list_item = client.resolve_block_list_item(
@@ -397,6 +423,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--city', choices=['spb', 'msk', 'all'], default='all')
     parser.add_argument('--guid', help='Только один ЖК по guid (например astrum)')
     parser.add_argument('--delay', type=float, default=0.3, help='Пауза между ЖК (сек)')
+    parser.add_argument(
+        '--skip-existing',
+        action='store_true',
+        help='Пропустить ЖК, у которых уже есть summary.json в output.',
+    )
+    parser.add_argument(
+        '--force',
+        action='store_true',
+        help='Перекачать даже если summary.json уже есть.',
+    )
     args = parser.parse_args(argv)
 
     if not args.phone or not args.password:
@@ -433,6 +469,11 @@ def main(argv: list[str] | None = None) -> int:
             blocks_map = client.fetch_blocks_map(city_id)
         except requests.HTTPError as exc:
             print(f'  ! нет доступа к городу {city_key}: {exc}')
+            if city_key == 'msk':
+                print(
+                    '  ! Москва: нужен TrendAgent-аккаунт московского агентства.\n'
+                    '    Текущий логин привязан только к СПб (API city=msk → 400).'
+                )
             continue
 
         print(f'  ЖК в каталоге: {len(blocks_map)}')
@@ -450,6 +491,7 @@ def main(argv: list[str] | None = None) -> int:
             )
 
         print(f'  к парсингу: {len(targets)}')
+        skip_existing = args.skip_existing and not args.force
         for item in targets:
             summary = parse_complex(
                 client,
@@ -459,6 +501,7 @@ def main(argv: list[str] | None = None) -> int:
                 output_root=args.output,
                 list_index=list_index,
                 folder=group.get('folder'),
+                skip_existing=skip_existing,
             )
             if summary:
                 summary['folder'] = group.get('folder')
@@ -473,7 +516,8 @@ def main(argv: list[str] | None = None) -> int:
             existing = []
         by_guid = {(item.get('guid') or '').lower(): item for item in existing if item.get('guid')}
         for item in all_summaries:
-            by_guid[(item.get('guid') or '').lower()] = item
+            if item:
+                by_guid[(item.get('guid') or '').lower()] = item
         all_summaries = list(by_guid.values())
 
     index_path.write_text(json.dumps(all_summaries, ensure_ascii=False, indent=2), encoding='utf-8')

@@ -12,72 +12,79 @@
     }
   },
   "complexes": [
-  {
-    "folder": "Это по спб",
-    "city": "spb",
-    "region": "saint_petersburg",
-    "names": [
-      "ELEMENT",
-      "BASHNI ELEMENT",
-      "Аструм",
-      "Моисеенко",
-      "Остров Первых",
-      "Коллекционер",
-      "Новый Московский",
-      "Зум на Неве",
-      "Гений",
-      "Галерная Гавань",
-      "Новое Колпино",
-      "Тайм Сквер",
-      "Респект"
-    ],
-    "guids": [
-      "bashni-element",
-      "astrum",
-      "moiseenko-10",
-      "ostrov-pervyh",
-      "kollekcioner",
-      "trend-144-9",
-      "trend-144-6",
-      "geniy",
-      "galernaya-gavan",
-      "novoe_kolpino",
-      "times-square",
-      "respect"
-    ]
-  },
-  {
-    "folder": "Это мск",
-    "city": "msk",
-    "region": "moscow",
-    "names": [
-      "СТОУН Сокольники",
-      "Сокольники",
-      "Джойс",
-      "МЫС",
-      "Первый квартал",
-      "Квартал Герцена",
-      "СИТИДЗЕН",
-      "CITIZEN"
-    ]
-  },
-  {
-    "folder": "новостройкам Мск",
-    "city": "msk",
-    "region": "moscow",
-    "names": [
-      "Симоновский Вал",
-      "МИРА",
-      "C5",
-      "Соколин",
-      "Соколинн Парк",
-      "Назаре",
-      "Мангазея",
-      "Новая, 11",
-      "Новая 11",
-      "Инджой",
-      "Enjoy"
-    ]
-  }
+    {
+      "folder": "Это по спб",
+      "city": "spb",
+      "region": "saint_petersburg",
+      "names": [],
+      "guids": [
+        "1733",
+        "astrum",
+        "bashni-element",
+        "galernaya-gavan",
+        "geniy",
+        "granat",
+        "id-petrogradskaya",
+        "kollekcioner",
+        "ldm",
+        "lisino",
+        "moiseenko-10",
+        "morskaya-milya",
+        "morskaya-rivera",
+        "novaya-zemlya1",
+        "novoe_kolpino",
+        "oktyabrskaya-naberezhnaya",
+        "ostrov-pervyh",
+        "pulkovo-lake",
+        "rechnoy-kvartal-trest",
+        "respect",
+        "ruchi-2",
+        "sezony-psk",
+        "severnyi-veter",
+        "times-square",
+        "trend-144-6",
+        "trend-144-9"
+      ]
+    },
+    {
+      "folder": "Это мск",
+      "city": "msk",
+      "region": "moscow",
+      "names": [
+        "СТОУН Сокольники",
+        "Сокольники",
+        "Джойс",
+        "МЫС",
+        "Первый квартал",
+        "Квартал Герцена",
+        "СИТИДЗЕН",
+        "CITIZEN",
+        "Сити Бэй",
+        "Квартал Тишинский бульвар",
+        "Дом А",
+        "Квартал МОНС"
+      ],
+      "guids": []
+    },
+    {
+      "folder": "новостройкам Мск",
+      "city": "msk",
+      "region": "moscow",
+      "names": [
+        "Симоновский Вал",
+        "МИРА",
+        "C5",
+        "Соколин",
+        "Соколинн Парк",
+        "Назаре",
+        "Мангазея",
+        "Новая, 11",
+        "Новая 11",
+        "Лосиноостровский парк",
+        "Инджой",
+        "Enjoy"
+      ],
+      "guids": []
+    }
   ]
 }

@@ -55,7 +55,15 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         export_root: Path = options['path']
         if not export_root.is_dir():
-            raise CommandError(f'Папка не найдена: {export_root}')
+            raise CommandError(
+                f'Папка экспорта не найдена: {export_root}\n\n'
+                'Данные TrendAgent не попадают в git (.gitignore). Варианты:\n'
+                '  1) С локальной машины скопировать папку на сервер:\n'
+                '     scp -r data/trendagent_export user@server:/var/www/Realline/data/\n'
+                '  2) На сервере сначала спарсить (нужны TRENDAGENT_PHONE/PASSWORD):\n'
+                '     python scripts/parse_trendagent.py --city spb\n'
+                '  3) Указать другой путь: python manage.py import_trendagent --path /путь/к/trendagent_export'
+            )
 
         region_filter = normalize_listing_region(options['region']) if options['region'] else None
         if options['region'] and not region_filter:
