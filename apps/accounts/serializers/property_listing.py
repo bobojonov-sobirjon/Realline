@@ -10,6 +10,7 @@ from apps.accounts.filters import (
     CATALOG_TAG_RAILWAY,
     CATALOG_TAG_START_SALES,
 )
+from apps.accounts.utils.html_text import clean_listing_description
 from apps.accounts.models import (
     District,
     Highway,
@@ -355,6 +356,12 @@ class PropertyListingSerializer(serializers.ModelSerializer):
             'is_actual_offer',
             'listing_units',
         )
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if data.get('description'):
+            data['description'] = clean_listing_description(data['description'])
+        return data
 
     def get_is_favourite(self, obj) -> bool:
         ids = self.context.get('favorite_listing_ids')

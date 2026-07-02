@@ -20,6 +20,7 @@ from apps.accounts.models import (
     PropertyListingUnit,
     ResidentialListingDetails,
 )
+from apps.accounts.utils.html_text import clean_listing_description
 from apps.accounts.utils.region import normalize_listing_region
 
 User = get_user_model()
@@ -258,7 +259,7 @@ def import_complex(
     district = _resolve_district(region, summary.get('district') or '')
     price_min = _decimal(summary.get('price_min')) or Decimal('0')
     subway_note = _subway_note(summary.get('subways') or [])
-    description = summary.get('description_html') or ''
+    description = clean_listing_description(summary.get('description_html') or '')
 
     listing = PropertyListing.objects.filter(slug=guid).first()
     created = listing is None

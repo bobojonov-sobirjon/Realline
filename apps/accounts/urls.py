@@ -6,12 +6,12 @@ app_name = 'accounts'
 
 urlpatterns = [
     path(
-        'catalog/properties/<int:listing_pk>/units/summary/',
+        'catalog/properties/<str:listing_pk>/units/summary/',
         views.PropertyListingUnitSummaryView.as_view(),
         name='property-catalog-units-summary',
     ),
     path(
-        'catalog/properties/<int:listing_pk>/units/',
+        'catalog/properties/<str:listing_pk>/units/',
         views.PropertyListingUnitListView.as_view(),
         name='property-catalog-units-list',
     ),

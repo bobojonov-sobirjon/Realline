@@ -1,5 +1,4 @@
 from django.db.models import Count, Max, Min
-from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, OpenApiTypes, extend_schema
 from rest_framework import generics
@@ -26,6 +25,7 @@ from apps.accounts.serializers import (
     PropertyListingUnitSummaryRowSerializer,
 )
 from apps.accounts.serializers.property_listing import listing_favorite_compare_context
+from apps.accounts.utils.catalog_lookup import resolve_catalog_listing
 from apps.accounts.views.schemas import (
     _CATALOG_DESCRIPTION,
     _LISTING_UNITS_DESCRIPTION,
@@ -40,10 +40,7 @@ class _CatalogListingLookupMixin:
 
     def get_object(self):
         lookup = self.kwargs[self.lookup_url_kwarg]
-        qs = self.get_queryset()
-        if str(lookup).isdigit():
-            return get_object_or_404(qs, pk=int(lookup))
-        return get_object_or_404(qs, slug=lookup)
+        return resolve_catalog_listing(lookup, published_only=True)
 
 
 @extend_schema(
@@ -300,10 +297,7 @@ class _PublishedListingUnitsMixin:
     listing_kwarg = 'listing_pk'
 
     def _published_listing(self):
-        return get_object_or_404(
-            PropertyListing.objects.filter(status=PropertyListing.Status.PUBLISHED),
-            pk=self.kwargs[self.listing_kwarg],
-        )
+        return resolve_catalog_listing(self.kwargs[self.listing_kwarg], published_only=True)
 
     def units_queryset(self):
         listing = self._published_listing()
